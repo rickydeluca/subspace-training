@@ -91,9 +91,3 @@ class CIFAR10DataModule(LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.cifar10_test, batch_size=self.batch_size, num_workers=multiprocessing.cpu_count())
-
-# ============
-#   ImageNet
-# ============
-# def imagenet_datamodule():
-#     return ImagenetDataModule() # from lightning bolts community
