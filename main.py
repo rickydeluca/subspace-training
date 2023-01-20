@@ -13,7 +13,7 @@ BATCH_SIZE = 256 if torch.cuda.is_available() else 64
 
 # Check the datasete we are using
 dataset         = "mnist"
-network_type    = "lenet"
+network_type    = "fc"
 subspace_dim    = 1000
 proj_type       = "sparse"
 deterministic   = True
@@ -45,7 +45,7 @@ if dataset == "cifar10":
 if network_type == "fc":
     model = SubspaceFCN(    input_size=input_size,
                             input_channels=input_size,
-                            n_hidden=200,
+                            n_hidden=100,
                             output_size=output_size,
                             subspace_dim=subspace_dim,
                             proj_type=proj_type)
