@@ -119,7 +119,7 @@ class SubspaceFCN(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim).todense()
-            self.P = Variable(torch.Tensor(_P).to_sparse(), requires_grad=False)
+            self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
         else:
             print("ERROR: No other random generation modes implemented yet!")
@@ -130,14 +130,7 @@ class SubspaceFCN(LightningModule):
             return self.theta_D
         else:
             self.P = self.P.to(self.device)  # move P to cuda (if using)
-
-            # if self.proj_type == "dense":
             return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
-            # if self.proj_type == "sparse":
-            #     return torch.sparse.mm(self.P, self.theta_d).reshape(self.theta_0(0))
-            # if self.proj_type == "fastfood":
-            #     print("Fastfood projection not implemented yet! Try later!")
-            #     sys.exit(0)
 
     def forward(self, x):
         # Get the projected parameters
@@ -281,12 +274,11 @@ class SubspaceLeNet(LightningModule):
         if self.subspace_dim is None:   # initialized parameters == trainable parameters
             self.theta_D = nn.Parameter(self.theta_0, requires_grad=True)
 
-        else:                           # compute theta_d, make it trainables and project it using P
+        else:   # compute theta_d, make it trainables and project it using P
             self.init_projection_matrix()   # (init self.P projection matrix)
 
             # Init theta_d
             _theta_d = torch.zeros(self.subspace_dim, 1)
-            # _theta_d[0] = self.theta_0[0,0] / self.P[0,0]
 
             self.theta_d = nn.Parameter(_theta_d, requires_grad=True)
 
@@ -333,7 +325,8 @@ class SubspaceLeNet(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
-            return self.P.to(self.device).mm(self.theta_d).reshape(self.theta_0.size(0))
+            self.P = self.P.to(self.device)
+            return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
 
     def forward(self, x):
 
@@ -732,7 +725,6 @@ class SubspaceResNet20(LightningModule):
 
             # Init theta_d
             _theta_d = torch.zeros(self.subspace_dim, 1)
-            _theta_d[0] = self.theta_0[0,0] / self.P[0,0]
 
             self.theta_d = nn.Parameter(_theta_d, requires_grad=True)
 
@@ -771,7 +763,7 @@ class SubspaceResNet20(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             # Sparse projection
-            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
+            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim).todense()
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
         else:
@@ -782,7 +774,8 @@ class SubspaceResNet20(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D.to(self.device)
         else:
-            return self.P.to(self.device).mm(self.theta_d).reshape(self.theta_0.size(0)).to(self.device)
+            self.P = self.P.to(self.device)
+            return self.P.mm(self.theta_d).reshape(self.theta_0.size(0)).to(self.device)
 
     def forward(self, x):
 
