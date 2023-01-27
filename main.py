@@ -14,8 +14,8 @@ BATCH_SIZE = 256 if torch.cuda.is_available() else 64
 # Check the datasete we are using
 dataset         = "mnist"
 network_type    = "fc"
-subspace_dim    = 1000
-proj_type       = "sparse"
+subspace_dim    = 1999
+proj_type       = "fastfood"
 deterministic   = True
 
 # Reproducibility
@@ -34,17 +34,12 @@ if dataset == "cifar10":
     input_size = 32*32
     input_channels = 1
     output_size = 10
-# if dataset == "imagenet":
-#     data_module = ImagenetDataModule(PATH_DATASETS+"/ILSVRC2017_DET_test_new/ILSVRC")
-#     input_size = 224*224
-#     input_channels = 3
-#     output_size = 1000
 
 
 # Init the model
 if network_type == "fc":
     model = SubspaceFCN(    input_size=input_size,
-                            input_channels=input_size,
+                            input_channels=input_channels,
                             n_hidden=100,
                             output_size=output_size,
                             subspace_dim=subspace_dim,

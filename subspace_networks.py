@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
-from utils import get_sparse_projection_matrix, get_fastfood_projection_matrix
+from projection_utils import get_fastfood_projection_matrix, get_sparse_projection_matrix, _is_power_of_two
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -24,8 +24,19 @@ class SubspaceFCN(LightningModule):
         self.n_hidden = n_hidden
         self.output_size = output_size
         self.learning_rate = learning_rate
-        self.subspace_dim = subspace_dim    # Size of subdimensional space (d). If None, then no subspace training.
         self.proj_type = proj_type
+
+        # If we are using the fastfood projection,
+        # then we need to round the subspace dimension
+        # to the first power of 2.
+        if subspace_dim is not None:
+            if proj_type == "fastfood":
+                if not _is_power_of_two(subspace_dim):
+                    subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
+                    print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
+        
+        self.subspace_dim = subspace_dim
+               
 
         # Define subspace training attributes
         self.P = None           # projection matrix
@@ -118,8 +129,13 @@ class SubspaceFCN(LightningModule):
 
         # Sparse projection
         elif self.proj_type == "sparse":
-            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim).todense()
+            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
+
+        # Fastfood projection
+        elif self.proj_type == "fastfood":
+            _P = get_fastfood_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
+            self.P = Variable(torch.tensor(_P), requires_grad=False)
 
         else:
             print("ERROR: No other random generation modes implemented yet!")
@@ -129,6 +145,11 @@ class SubspaceFCN(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
+            # print("--- Projection Infos ---")
+            # print("P: ", self.P.shape)
+            # print("theta_d", self.theta_d.shape)
+            # print("theta_0: ", self.theta_0.shape)
+            # sys.exit(0)
             self.P = self.P.to(self.device)  # move P to cuda (if using)
             return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
 
@@ -315,7 +336,7 @@ class SubspaceLeNet(LightningModule):
 
         # Sparse projection
         elif self.proj_type == "sparse":
-            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim).todense()
+            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
         else:
             print("ERROR: No other random generation modes implemented yet!")
@@ -763,7 +784,7 @@ class SubspaceResNet20(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             # Sparse projection
-            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim).todense()
+            _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
         else:
