@@ -1,73 +1,30 @@
+import math
 import sys
 
 import numpy as np
 import torch
+from numpy import random
 from scipy.linalg import hadamard
 from sklearn import random_projection
-from sklearn.utils import check_array, check_random_state
-from sklearn_extra.kernel_approximation import Fastfood
-import math
+from sklearn.utils import check_random_state
 
 
 # Check if is power of two
-def _is_power_of_two(n):
-    """
+def is_power_of_two(n):
+    '''
     Check if the integer n is a power of two or not.
-    """
+    '''
     return n != 0 and ((n & (n - 1)) == 0)
 
-def _fast_walsh_hadamard_transform(x):
-    """
-    Compute the Fast Walsh-Hadamard Transform.
-
-    Args
-    ----
-        x:  vector with shape [d, 1],
-            where d is a power of 2.
-    """
-
-    if x.shape[0] == 0:
-        return x
-    else:
-        x_top = x[:int(x.shape[0]/2)]
-        x_bot = x[int(x.shape[0]/2):]
-        return torch.vstack([_fast_walsh_hadamard_transform(x_top + x_bot),
-                             _fast_walsh_hadamard_transform(x_top - x_bot)])
-
-def _fast_walsh_hadamard_transform_opt(x):
-    x = x.squeeze()
-    N = x.size(0)
-    G = int(N/2) # Number of Groups
-    M = 2 # Number of Members in Each Group
-
-    # First stage
-    y = torch.zeros((int(N/2),2))
-    y[:,0] = x[0::2] + x[1::2]
-    y[:,1] = x[0::2] - x[1::2]
-    x = y
-    # Second and further stage
-    for nStage in range(2,int(math.log(N,2))+1):
-        y = torch.zeros((int(G/2),M*2))
-        y[0:int(G/2),0:M*2:4] = x[0:G:2,0:M:2] + x[1:G:2,0:M:2]
-        y[0:int(G/2),1:M*2:4] = x[0:G:2,0:M:2] - x[1:G:2,0:M:2]
-        y[0:int(G/2),2:M*2:4] = x[0:G:2,1:M:2] - x[1:G:2,1:M:2]
-        y[0:int(G/2),3:M*2:4] = x[0:G:2,1:M:2] + x[1:G:2,1:M:2]
-        x = y
-        G = int(G/2)
-        M = M*2
-    x = y[0,:]
-    x = x.reshape((x.size(0),1))
-    return x
-
-
-
-# Sparse matrix
+# =============================
+#       SPARSE PROJECTION 
+# =============================
 def get_sparse_projection_matrix(D: int, d: int, density="auto", seed=None):
-    """
+    '''
     Generate a random sparse projection matrix of size (D x d).
     
     Wrapper for scikit-learn/random_projection.py
-    """
+    '''
     
     # Check input values
     random_projection._check_input_size(D, d)
@@ -81,9 +38,144 @@ def get_sparse_projection_matrix(D: int, d: int, density="auto", seed=None):
     
     return P.todense()
 
-# Fastfood matrix
-def get_fastfood_projection_matrix(D: int, d: int, seed=None):
+
+
+
+# ===============================
+#       FASTFOOD PROJECTION
+# ===============================
+
+# Utility functions to create fast versions of
+# the fastfood factorization matrices.
+
+def _B_pm1(d, rng=None):
+    if rng is None:
+        return random.randint(2, size=(d)) * 2 - 1
+    else:
+        return rng.randint(2, size=(d)) * 2 - 1
+
+def _G_gauss(d, rng=None):
+    if rng is None:
+        return random.normal(0, 1, d)
+    else:
+        return rng.normal(0, 1, d)
+    
+def _Pi_perm_order(d, rng=None):
+    '''Fast perm, return perm order'''
+    if rng is None:
+        return random.permutation(d)
+    else:
+        return rng.permutation(d)
+    
+
+
+class FWHT(torch.autograd.Function):
+
     """
+    Optimized Fast Walsh-Hadamard Transform.
+    This function was adapted from:
+    https://github.com/uber-research/intrinsic-dimension/blob/master/intrinsic_dim/Hadamard.ipynb
+    (Python notebook by Li et all. authors of the original intrinsic dimension paper: 
+    https://arxiv.org/pdf/1804.08838.pdf)
+
+    The optimized fwht has been inserted inside a torch.autograd.Function module
+    to backpropagate the gradient while projecting the tensor.
+    Also it was adapted to work natively with Tensors.
+    """
+    
+    def transform(x):        
+        x = x.squeeze()
+        N = x.size(0)
+        G = int(N/2)            # Number of Groups
+        M = 2                   # Number of Members in Each Group
+
+        # First stage
+        y = torch.zeros((int(N/2),2))
+        y[:,0] = x[0::2] + x[1::2]
+        y[:,1] = x[0::2] - x[1::2]
+        x = y.clone()
+
+        # Second and further stage
+        for nStage in range(2,int(math.log(N,2))+1):
+            y = torch.zeros((int(G/2),M*2))
+            y[0:int(G/2),0:M*2:4] = x[0:G:2,0:M:2] + x[1:G:2,0:M:2]
+            y[0:int(G/2),1:M*2:4] = x[0:G:2,0:M:2] - x[1:G:2,0:M:2]
+            y[0:int(G/2),2:M*2:4] = x[0:G:2,1:M:2] - x[1:G:2,1:M:2]
+            y[0:int(G/2),3:M*2:4] = x[0:G:2,1:M:2] + x[1:G:2,1:M:2]
+            x = y.clone()
+            G = int(G/2)
+            M = M*2
+        x = y[0,:]
+        x = x.reshape((x.size(0),1))
+
+        return x
+
+    @staticmethod
+    def forward(ctx, input):
+        return FWHT.transform(input) 
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return FWHT.transform(grad_output)
+    
+
+class FastfoodProject(object):
+    """
+    Class to handle the fastfood projection. Adapted from:
+    https://github.com/uber-research/intrinsic-dimension/blob/master/intrinsic_dim/Hadamard.ipynb
+    (Python notebook by Li et all. authors of the original intrinsic dimension paper: 
+    https://arxiv.org/pdf/1804.08838.pdf))
+    """
+
+    def __init__(self, d, n, seed=42):
+        self.d = d
+        self.n = n
+        self.rng = random.RandomState(seed)
+        
+        self.B  = []
+        self.Pi = []
+        self.G  = []
+
+        self.float_replicates = float(self.n)/self.d
+        self.replicates = int(np.ceil(self.float_replicates))
+        
+        for ii in range(self.replicates):
+            self.B.append(torch.from_numpy(_B_pm1(d, rng=self.rng)[:,np.newaxis]))
+            self.Pi.append(torch.from_numpy(_Pi_perm_order(d, rng=self.rng)))
+            self.G.append(torch.from_numpy(_G_gauss(d, rng=self.rng)[:,np.newaxis]))
+
+    def project_i(self, x, i):
+        norm_by = math.sqrt((self.G[i]**2).sum() * self.d)
+
+        ret = self.B[i] * x
+        ret = FWHT.apply(ret)
+        ret = ret[self.Pi[i]]
+        ret = self.G[i] * ret
+        ret = FWHT.apply(ret)
+
+        # Normalize the result.
+        # We need to use this function to have a not in place division 
+        # and keep the gradient safe.
+        ret = torch.div(ret, norm_by)   
+
+        return ret
+    
+    def project(self, x):
+        rets = []
+        for ii in range(self.replicates):
+            rets.append(self.project_i(x, ii))
+        
+        # Stack in a single tensor
+        rets = torch.vstack(rets).to(torch.float)
+
+        # Cut out all the exceeding rows and return
+        return rets[:self.n, :]
+
+
+# Get dense Fastfood matrix.
+# Slow version, done using dense Hadamard function.
+def get_fastfood_projection_matrix(D: int, d: int, seed=None):
+    '''
     Generate a random FastFood projection matrix.
     We can view it as a square Gaussian matrix M with side-lengths equal to a power of two,
     where is M is factorized int multiple simple matrices: M = HGΠHB.
@@ -93,10 +185,7 @@ def get_fastfood_projection_matrix(D: int, d: int, seed=None):
     - G is a random diagonal matrix is a diagonal matrix whose elements are drawn from a Gaussian [Gii ∼ N (0, 1)]
 
     (http://proceedings.mlr.press/v28/le13.pdf)
-
-    But intead of using an Hadamard matrix, we use the Fast Walsh-Hadamard Transform
-    to speed up the computation.
-    """
+    '''
     
     # Check input values
     random_projection._check_input_size(D, d)
@@ -104,13 +193,13 @@ def get_fastfood_projection_matrix(D: int, d: int, seed=None):
     # Check if d is a power of 2,
     # otherwise find the first power of two greater than d.
     d_orig = d                              # save the original d value
-    if not _is_power_of_two(d):
+    if not is_power_of_two(d):
         d = int(np.power(2, np.floor(np.log2(d)) + 1))
     
     # How much we need to zero pad the original tensor
     num_zero_pad = d - d_orig   
 
-    # Fasfood factorization matrices:
+    # -- Fasfood Factorization Matrices --
 
     # B: Random diagonal matrix with entries +-1 with equal probability
     random_input = torch.randn(d)           # generate a random tensor
@@ -166,76 +255,21 @@ def get_fastfood_projection_matrix(D: int, d: int, seed=None):
 
     return F
 
-def fastfood_projection(x, D, d, seed=42):
-    # Init factorization matrices.
-    B = []
-    P = []
-    G = []
-
-    # d must be a power of 2.
-    # If not find the first n > d that satify that property.
-    d_orig = d  
-    if not _is_power_of_two(d):
-        d = int(np.power(2, np.floor(np.log2(d)) + 1))
-    
-    num_zero_padding = d - d_orig
-
-    # If D > d (and this should always be the case),
-    # we need to stack D/d fastfood matrices to have
-    # a final [D x d] matirx.
-    num_times_to_stack = int(D/d) + (D % d > 0)        # round up to the nearest integer
-
-    # Build and stack the factorization matrices.
-    for i in range(num_times_to_stack):
-        
-        # =====
-        #   B
-        # =====
-        random_input = torch.randn(d)
-        random_input = torch.sign(random_input)
-        B_i = torch.diag(random_input)
-        B.append(B_i)
-        
-        # =====
-        #   P
-        # =====
-        P_i = torch.eye(d)
-        shuffled_indices = torch.randperm(d)
-        P_i = P_i[:, shuffled_indices]  # shuffle the columns
-        P.append(P_i)
-
-        # =====
-        #   G
-        # =====
-        G_i = torch.diag(torch.randn(d))
-        G.append(G_i)
-
-    # Project the input tensor x.
-    projected_tensor = []
-    for i in range(num_times_to_stack):
-        norm_by = torch.sqrt((torch.diagonal(G[i]) ** 2).sum() * d)
-        
-        ret = B[i] @ x
-        ret = _fast_walsh_hadamard_transform_opt(ret)
-        ret = P[i] @ ret
-        ret = G[i] @ ret.to(torch.float)
-        ret = _fast_walsh_hadamard_transform_opt(ret)
-        ret /= norm_by
-        ret /= math.sqrt(num_times_to_stack)
-
-        # Append the fastfood matrix.
-        projected_tensor.append(ret)
-    
-    # Concatenate togheter all the projected_tensors along rows.
-    projected_tensor = torch.cat(projected_tensor, dim=0).to(torch.float)
-
-    # Truncate all the exceeding rows.
-    projected_tensor = projected_tensor[:D, :]
-    # print("Projected tensor shape: ", projected_tensor.shape)
-
-    return projected_tensor
-
+# ========
+#   TEST
+# ========
 if __name__ == "__main__":
-    x = torch.randn(1024,1)
-    fastfood_projection(x, 3000, 1024)
+    d = 1024
+    D = 18920
+    x = torch.randn(1024,1, requires_grad=True)
+    
+    # Test FWHT with grad
+    # proj_x = FWHT.apply(x)
+
+    # Test combinatio FP and FWHT
+    pp = FastfoodProject(d, D)
+    proj_x = pp.project(x)
+
+    print("x: ", x.requires_grad)
+    print("proj x: ", proj_x.requires_grad)
     

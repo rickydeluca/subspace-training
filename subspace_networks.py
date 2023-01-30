@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
-from projection_utils import get_fastfood_projection_matrix, get_sparse_projection_matrix, _is_power_of_two, fastfood_projection
+from projection_utils import FastfoodProject, get_sparse_projection_matrix, is_power_of_two
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -30,7 +30,7 @@ class SubspaceFCN(LightningModule):
         # then we need to round the subspace dimension
         # to the first power of 2.
         if proj_type == "fastfood" and subspace_dim is not None:
-            if not _is_power_of_two(subspace_dim):
+            if not is_power_of_two(subspace_dim):
                 subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
                 print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
         
@@ -131,12 +131,9 @@ class SubspaceFCN(LightningModule):
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
-        # Fastfood projection.
-        # Do nothing here. We will do the projection directly later on
-        # to exploit the fast walsh hadamard transfrom.
+        # Fastfood projection
         elif self.proj_type == "fastfood":
-            _P = get_fastfood_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
-            self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            self.P = FastfoodProject(d=self.subspace_dim, n=self.theta_0.size(0))
 
         else:
             print("ERROR: No other random generation modes implemented yet!")
@@ -146,16 +143,17 @@ class SubspaceFCN(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
-            if self.proj_type == "neeeveer!":
-                return fastfood_projection(self.theta_d, self.theta_0.size(0), self.subspace_dim)
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
             else:
                 self.P = self.P.to(self.device)  # move P to cuda (if using)
                 return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
-
+            
     def forward(self, x):
         # Get the projected parameters
-        projected_params = self.project_params()
+        projected_params = self.project_params().to(self.device)
 
+        # Slice the parameters wrt to the weight in each layer
         sliced_params = {}
         for idx, n in enumerate(self.weight_names):
             sliced_params[n] = projected_params[self.slice_indices[idx]:self.slice_indices[idx+1]]
@@ -221,8 +219,17 @@ class SubspaceLeNet(LightningModule):
         self.n_feature      = n_feature
         self.output_size    = output_size
         self.learning_rate  = learning_rate
-        self.subspace_dim   = subspace_dim    # Size of subdimensional space (d). If None, then no subspace training.
         self.proj_type      = proj_type
+
+        # If we are using the fastfood projection,
+        # then we need to round the subspace dimension
+        # to the first power of 2.
+        if proj_type == "fastfood" and subspace_dim is not None:
+            if not is_power_of_two(subspace_dim):
+                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
+                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
+        
+        self.subspace_dim = subspace_dim
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
@@ -337,6 +344,11 @@ class SubspaceLeNet(LightningModule):
         elif self.proj_type == "sparse":
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
+
+        # Fastfood projection
+        elif self.proj_type == "fastfood":
+            self.P = FastfoodProject(d=self.subspace_dim, n=self.theta_0.size(0))
+
         else:
             print("ERROR: No other random generation modes implemented yet!")
             sys.exit(1)
@@ -345,13 +357,16 @@ class SubspaceLeNet(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
-            self.P = self.P.to(self.device)
-            return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
+            else:
+                self.P = self.P.to(self.device)
+                return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
 
     def forward(self, x):
 
         # Get the projected parameters
-        projected_params = self.project_params()
+        projected_params = self.project_params().to(self.device)
 
         sliced_params = {}
         for idx, n in enumerate(self.weight_names):
@@ -434,8 +449,17 @@ class SubspaceCNN(LightningModule):
         self.n_feature      = n_feature
         self.output_size    = output_size
         self.learning_rate  = learning_rate
-        self.subspace_dim   = subspace_dim    # Size of subdimensional space (d). If None, then no subspace training.
         self.proj_type      = proj_type
+
+        # If we are using the fastfood projection,
+        # then we need to round the subspace dimension
+        # to the first power of 2.
+        if proj_type == "fastfood" and subspace_dim is not None:
+            if not is_power_of_two(subspace_dim):
+                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
+                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
+        
+        self.subspace_dim = subspace_dim
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
@@ -551,6 +575,10 @@ class SubspaceCNN(LightningModule):
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
+        # Fastfood projection
+        elif self.proj_type == "fastfood":
+            self.P = FastfoodProject(d=self.subspace_dim, n=self.theta_0.size(0))
+
         else:
             print("ERROR: No other random generation modes implemented yet!")
             sys.exit(1)
@@ -559,7 +587,11 @@ class SubspaceCNN(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D.to(self.device)
         else:
-            return self.P.to(self.device).mm(self.theta_d).reshape(self.theta_0.size(0)).to(self.device)
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
+            else:
+                self.P = self.P.to(self.device)
+                return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
 
     def forward(self, x):
         # Split the trainable parameters in theta_D for each layer
@@ -567,7 +599,7 @@ class SubspaceCNN(LightningModule):
         slice_indices = np.cumsum([0] + num_params_per_layer)
 
         # Get the projected parameters
-        projected_params = self.project_params()
+        projected_params = self.project_params().to(self.device)
 
         sliced_params = {}
         for idx, n in enumerate(self.weight_names):
@@ -653,8 +685,17 @@ class SubspaceResNet20(LightningModule):
         self.input_channels = input_channels
         self.output_size    = output_size
         self.learning_rate  = learning_rate
-        self.subspace_dim   = subspace_dim    # Size of subdimensional space (d). If None, then no subspace training.
         self.proj_type      = proj_type
+
+        # If we are using the fastfood projection,
+        # then we need to round the subspace dimension
+        # to the first power of 2.
+        if proj_type == "fastfood" and subspace_dim is not None:
+            if not is_power_of_two(subspace_dim):
+                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
+                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
+        
+        self.subspace_dim = subspace_dim
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
@@ -760,9 +801,9 @@ class SubspaceResNet20(LightningModule):
                 "dense":    dense random projection matrix with orthonormal
                             using QR factorization. (Default)
 
-                "sparse":   dparse random projection matrix.
+                "sparse":   sparse random projection matrix.
 
-                "fastfood": TODO
+                "fastfood": fastfood random projection matrix.
         """
 
         # Dense projection
@@ -786,6 +827,10 @@ class SubspaceResNet20(LightningModule):
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
             self.P = Variable(torch.Tensor(_P), requires_grad=False)
 
+        # Fastfood projection
+        elif self.proj_type == "fastfood":
+            self.P = FastfoodProject(d=self.subspace_dim, n=self.theta_0.size(0))
+
         else:
             print("ERROR: No other random generation modes implemented yet!")
             sys.exit(1)
@@ -794,8 +839,11 @@ class SubspaceResNet20(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D.to(self.device)
         else:
-            self.P = self.P.to(self.device)
-            return self.P.mm(self.theta_d).reshape(self.theta_0.size(0)).to(self.device)
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
+            else:
+                self.P = self.P.to(self.device)
+                return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
 
     def forward(self, x):
 
@@ -806,7 +854,7 @@ class SubspaceResNet20(LightningModule):
             return F.pad(t[:, :, ::2, ::2], (0, 0, 0, 0, filters//4, filters//4), "constant", 0)
 
         # Get the projected parameters
-        projected_params = self.project_params()
+        projected_params = self.project_params().to(self.device)
 
         sliced_params = {}
         idx = 0
