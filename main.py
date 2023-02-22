@@ -4,6 +4,7 @@ import torch
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.loggers import CSVLogger
+import pandas as pd
 
 from data_modules import CIFAR10DataModule, MNISTDataModule
 
@@ -35,6 +36,8 @@ def parse_args():
                     help='Number of epochs to train. (default: 10)')
     parser.add_argument('--n_hidden_layers', type=int, default=1,
                     help='How many times repeat the hidden layer in the fc network. (default: 1)')
+    parser.add_argument('--logs_dir', type=str, default="logs/",
+                help='Path to the directory in which store the training logs. (default: "logs/")')
     return parser.parse_args()
 
 
@@ -97,8 +100,8 @@ def setup_trainer(args):
         devices = 1 if torch.cuda.is_available() else None,
         max_epochs = 10,
         callbacks = [TQDMProgressBar(refresh_rate=20)],
-        logger = CSVLogger(save_dir="logs/"),
-        deterministic = True if args.deterministic else False  # Reproducibility
+        logger = CSVLogger(save_dir=args.logs_dir),
+        deterministic = args.deterministic  # Reproducibility
     )
 
     return trainer
@@ -119,4 +122,7 @@ if __name__ == "__main__":
     trainer.fit(model, data_module)
 
     # Test
-    trainer.test(model, data_module)
+    test_metrics = trainer.test(model, data_module)
+
+    # Log test metrics
+    pd.DataFrame(test_metrics[0]).to_csv(f'{args.logs_dir}/test_logs/out.csv', index=False)
