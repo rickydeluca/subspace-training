@@ -4,7 +4,7 @@ import torch
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.loggers import CSVLogger
-import pandas as pd
+# import pandas as pd
 
 from data_modules import CIFAR10DataModule, MNISTDataModule
 
@@ -28,14 +28,20 @@ def parse_args():
                     help='Number parameters to use in the subspace training. If None do not use subspace trainig. (default: None)')
     parser.add_argument('--proj_type', type=str, default="dense",
                     help='The projection matrix to use. Choose between: "dense", "sparse" or "fastfood". If subspace dimension is None, ignore this parameter. (default: "dense")')
-    parser.add_argument('--deterministic', type=bool, default=True,
-                    help='Choose if we want the training to act deterministically. (default: True)')
+    parser.add_argument('--deterministic', type=int, default=1,
+                    help='Choose if we want the training to act deterministically. (default: 1)')
+    parser.add_argument('--shuffle_pixels', type=int, default=0,
+                    help='If 1 shuffle the pixels in the input images. (default: 0)')
     parser.add_argument('--lr', type=float, default=3e-3,
                     help='Learning rate. (default: 3e-3)')
     parser.add_argument('--epochs', type=int, default=10,
                     help='Number of epochs to train. (default: 10)')
-    parser.add_argument('--n_hidden_layers', type=int, default=1,
-                    help='How many times repeat the hidden layer in the fc network. (default: 1)')
+    parser.add_argument('--hidden_width', type=int, default=100,
+                    help='Size of hidden layers in fc network. (default: 100)')
+    parser.add_argument('--hidden_depth', type=int, default=1,
+                    help='How many hidden layer in the fc network. (default: 1)')
+    parser.add_argument('--n_feature', type=int, default=6,
+                    help='Number of features for CNNs. (default: 6)')
     parser.add_argument('--logs_dir', type=str, default="logs/",
                 help='Path to the directory in which store the training logs. (default: "logs/")')
     return parser.parse_args()
@@ -44,18 +50,30 @@ def parse_args():
 def setup_model(args):
     """ Set-up the model using the terminal inputs."""
 
+    _deterministic = True if args.deterministic==1 else False
+    _shuffle_pixels = True if args.shuffle_pixels==1 else False
+
     # Reproducibility
-    if args.deterministic:
-        seed_everything(42, workers=True)   # https://en.wikipedia.org/wiki/Phrases_from_The_Hitchhiker%27s_Guide_to_the_Galaxy#The_Answer_to_the_Ultimate_Question_of_Life,_the_Universe,_and_Everything_is_42
+    if _deterministic:
+        seed_everything(42, workers=True)
 
     # Get the datamodule
     if args.dataset == "mnist":
-        data_module = MNISTDataModule(data_dir=PATH_DATASETS, batch_size=BATCH_SIZE)
+        data_module = MNISTDataModule(
+            data_dir=PATH_DATASETS,
+            batch_size=BATCH_SIZE,
+            shuffle_pixels=_shuffle_pixels,
+            deterministic=_deterministic,
+            seed=42)
         input_size = 28*28
         input_channels = 1
         output_size = 10
+
     if args.dataset == "cifar10":
-        data_module = CIFAR10DataModule(data_dir=PATH_DATASETS, batch_size=BATCH_SIZE)
+        data_module = CIFAR10DataModule(
+            data_dir=PATH_DATASETS,
+            batch_size=BATCH_SIZE,
+            shuffle_pixels=_shuffle_pixels)
         input_size = 32*32
         input_channels = 1
         output_size = 10
@@ -65,9 +83,9 @@ def setup_model(args):
         model = SubspaceFCN(
             input_size=input_size,
             input_channels=input_channels,
-            hidden_size=100,
+            hidden_width=args.hidden_width,
             output_size=output_size,
-            n_hidden_layers=2,
+            hidden_depth=args.hidden_depth,
             subspace_dim=args.subspace_dim,
             proj_type=args.proj_type)
 
@@ -75,7 +93,7 @@ def setup_model(args):
         model = SubspaceLeNet(
             input_size=input_size,
             input_channels=input_channels,
-            n_feature=6,
+            n_feature=args.n_feature,
             output_size=output_size,
             subspace_dim=args.subspace_dim,
             proj_type=args.proj_type)
@@ -94,14 +112,17 @@ def setup_model(args):
 def setup_trainer(args):
     """Set-up the trainer using the terminal inputs."""
 
+    _deterministic = True if args.deterministic==1 else False
+    _shuffle_pixels = True if args.shuffle_pixels==1 else False
+
     # Setup trainer
     trainer = Trainer(
         accelerator = "auto",
         devices = 1 if torch.cuda.is_available() else None,
-        max_epochs = 10,
+        max_epochs = args.epochs,
         callbacks = [TQDMProgressBar(refresh_rate=20)],
         logger = CSVLogger(save_dir=args.logs_dir),
-        deterministic = args.deterministic  # Reproducibility
+        deterministic = _deterministic  # Reproducibility
     )
 
     return trainer
@@ -118,11 +139,8 @@ if __name__ == "__main__":
     # Setup trainer
     trainer = setup_trainer(args)
 
-    # Train
+    # Train and log
     trainer.fit(model, data_module)
 
-    # Test
+    # Test and log
     test_metrics = trainer.test(model, data_module)
-
-    # Log test metrics
-    pd.DataFrame(test_metrics[0]).to_csv(f'{args.logs_dir}/test_logs/out.csv', index=False)
