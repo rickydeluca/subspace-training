@@ -1,16 +1,14 @@
 import multiprocessing
+import random
 import sys
 
 import numpy as np
 import plotly.express as px
 import torch
-import torchvision.transforms.functional as F
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Dataset, Subset
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, MNIST
-
-# from pl_bolts.datamodules import ImagenetDataModule
 
 PATH_DATASETS = "./data/"
 BATCH_SIZE = 256 if torch.cuda.is_available() else 64
@@ -33,30 +31,69 @@ class PixelShuffleTransform(object):
     def __call__(self, data):
         
         if self.perm is not None:
-            # print("Shuffling pixels!!!")
             data_new=torch.zeros((data.shape))
             for i, img in enumerate(data):
-                data_new[i] = img.flatten()[self.perm].reshape((1,28,28))
+                data_new[i] = img.flatten()[self.perm].reshape((data.shape))
             
             return data_new
         
         else:
             return data
-            
-        
 
+
+class ShuffledLabelsSubset(Dataset):
+    """
+    Create a subset of the dataset using the given indices.
+    If requested shuffle the labels of the subset.
+
+    Args:
+        dataset (Dataset):      The original dataset
+        indices (List(int)):    The indices of the subset
+        shuffle (bool):         If True, shuffle the labels    
+    """
+    def __init__(self, dataset, indices, shuffle=False):
+        self.dataset = Subset(dataset, indices)
+        self.targets = [self.dataset[i][1] for i in range(len(self.dataset))]
+        
+        # print("targets before shuffling: ", self.targets[:10])
+
+        # Shuffle the labels if requested
+        if shuffle:
+            self.shuffle_labels()
+        
+        # print("targets after shuffling: ", self.targets[:10])
+        # sys.exit(0)
+
+    def shuffle_labels(self):
+        random.shuffle(self.targets)
+
+    def __getitem__(self, idx):
+        image = self.dataset[idx][0]
+        target = self.targets[idx]
+        return (image, target)
+
+    def __len__(self):
+        return len(self.targets)
 
 # =========
 #   MNIST
 # =========
 
 class MNISTDataModule(LightningDataModule):
-    def __init__(self, data_dir: str = PATH_DATASETS, batch_size: int = BATCH_SIZE, shuffle_pixels=False, deterministic=True, seed=42):
+    def __init__(
+        self,
+        data_dir: str = PATH_DATASETS, 
+        batch_size: int = BATCH_SIZE, 
+        shuffle_pixels=False, 
+        shuffle_labels=False, 
+        deterministic=True, seed=42
+        ):
         
         super().__init__()
 
         # Reproducibility
         if deterministic == True:
+            random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
@@ -64,13 +101,14 @@ class MNISTDataModule(LightningDataModule):
         # Class attributes
         self.data_dir = data_dir
         self.batch_size = batch_size
+        self.shuffle_labels = shuffle_labels
         
         # Define pixel permutation to use eventually
         if shuffle_pixels==True:
             perm = torch.randperm(28*28*1)
         else:
             perm = None
-
+        
         # Define transforms
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -88,11 +126,33 @@ class MNISTDataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
 
-            # Download and transform
-            mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
-            
-            # Split train and validation
-            self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
+            # Shuffle the labels if requested
+            if self.shuffle_labels:
+                # Download two copy of the same dataset in order to apply 
+                # the shuffling of the labels only on the training dataset
+                mnist_train_full = MNIST(self.data_dir, train=True, transform=self.transform)
+                mnist_val_full = MNIST(self.data_dir, train=True, transform=self.transform)
+
+                # Get the indices and shuffle them
+                indices = list(range(len(mnist_train_full)))
+                shuffled_indices = torch.randperm(len(indices))
+
+                # Split train and validation wrt the shuffled indices
+                train_indices, val_indices = shuffled_indices[:55000], shuffled_indices[55000:]
+                self.mnist_train = ShuffledLabelsSubset(mnist_train_full, train_indices, shuffle=True)
+                self.mnist_val = ShuffledLabelsSubset(mnist_val_full, val_indices, shuffle=True)   # Do not shuffle the labels here
+
+                # print("original mnist val: ", mnist_val_full[55000])
+                # print("shuffled mnist val: ", self.mnist_val[0])
+                # print("Is the image the same: ", mnist_train_full[0][0] == self.mnist_train[0][0])
+                # sys.exit(0)
+
+            else:   # No label shuffling
+                # Download and transform
+                mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
+
+                # Split train and validation
+                self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
@@ -113,13 +173,29 @@ class MNISTDataModule(LightningDataModule):
 # ===========
 
 class CIFAR10DataModule(LightningDataModule):
-    def __init__(self, data_dir: str = PATH_DATASETS, batch_size: int = BATCH_SIZE, shuffle_pixels=False):
+    def __init__(
+            self, 
+            data_dir: str = PATH_DATASETS, 
+            batch_size: int = BATCH_SIZE, 
+            shuffle_pixels=False,
+            shuffle_labels=False,
+            deterministic=True,
+            seed=42
+        ):
         
         super().__init__()
-        
+
+        # Reproducibility
+        if deterministic == True:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+
         # Class attributes
         self.data_dir = data_dir
         self.batch_size = batch_size
+        self.shuffle_labels = shuffle_labels
 
         # Define pixel permutation to use eventually
         if shuffle_pixels==True:
@@ -145,6 +221,12 @@ class CIFAR10DataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
             cifar10_full = CIFAR10(self.data_dir, train=True, transform=self.transform)
+            
+            # Shuffle the labels if requested
+            if self.shuffle_labels:
+                cifar10_full.targets = [random.randint(0, 9) for _ in range(len(cifar10_full))]
+            
+            # Split train and validation
             self.cifar10_train, self.cifar10_val = random_split(cifar10_full, [45000, 5000])
 
         # Assign test dataset for use in dataloader(s)

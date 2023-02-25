@@ -4,12 +4,13 @@ import torch
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.loggers import CSVLogger
-# import pandas as pd
-
-from data_modules import CIFAR10DataModule, MNISTDataModule
 
 # Datamodules
+from data_modules import CIFAR10DataModule, MNISTDataModule
+
+# (Subspace) Networks
 from multiple_size_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
+
 
 PATH_DATASETS = "./data/"
 BATCH_SIZE = 256 if torch.cuda.is_available() else 64
@@ -32,6 +33,8 @@ def parse_args():
                     help='Choose if we want the training to act deterministically. (default: 1)')
     parser.add_argument('--shuffle_pixels', type=int, default=0,
                     help='If 1 shuffle the pixels in the input images. (default: 0)')
+    parser.add_argument('--shuffle_labels', type=int, default=0,
+                    help='If 1 shuffle the labels in the training dataset. (default: 0)')
     parser.add_argument('--lr', type=float, default=3e-3,
                     help='Learning rate. (default: 3e-3)')
     parser.add_argument('--epochs', type=int, default=10,
@@ -50,61 +53,74 @@ def parse_args():
 def setup_model(args):
     """ Set-up the model using the terminal inputs."""
 
+    # Explicit arguments
+    _dataset = args.dataset
+    _network_type = args.network_type
+    _hidden_width = args.hidden_width
+    _hidden_depth = args.hidden_depth
+    _n_feature = args.n_feature
+    _subspace_dim = args.subspace_dim
+    _proj_type = args.proj_type
     _deterministic = True if args.deterministic==1 else False
     _shuffle_pixels = True if args.shuffle_pixels==1 else False
+    _shuffle_labels = True if args.shuffle_labels==1 else False
 
     # Reproducibility
     if _deterministic:
         seed_everything(42, workers=True)
 
     # Get the datamodule
-    if args.dataset == "mnist":
+    if _dataset == "mnist":
         data_module = MNISTDataModule(
             data_dir=PATH_DATASETS,
             batch_size=BATCH_SIZE,
             shuffle_pixels=_shuffle_pixels,
+            shuffle_labels=_shuffle_labels,
             deterministic=_deterministic,
             seed=42)
         input_size = 28*28
         input_channels = 1
         output_size = 10
 
-    if args.dataset == "cifar10":
+    if _dataset == "cifar10":
         data_module = CIFAR10DataModule(
             data_dir=PATH_DATASETS,
             batch_size=BATCH_SIZE,
-            shuffle_pixels=_shuffle_pixels)
+            shuffle_pixels=_shuffle_pixels,
+            _shuffle_labels=_shuffle_labels,
+            _deterministic=_deterministic,
+            seed=42)
         input_size = 32*32
         input_channels = 1
         output_size = 10
 
     # Init the model
-    if args.network_type == "fc":
+    if _network_type == "fc":
         model = SubspaceFCN(
             input_size=input_size,
             input_channels=input_channels,
-            hidden_width=args.hidden_width,
+            hidden_width=_hidden_width,
             output_size=output_size,
-            hidden_depth=args.hidden_depth,
-            subspace_dim=args.subspace_dim,
-            proj_type=args.proj_type)
+            hidden_depth=_hidden_depth,
+            subspace_dim=_subspace_dim,
+            proj_type=_proj_type)
 
-    if args.network_type == "lenet":
+    if _network_type == "lenet":
         model = SubspaceLeNet(
             input_size=input_size,
             input_channels=input_channels,
-            n_feature=args.n_feature,
+            n_feature=_n_feature,
             output_size=output_size,
-            subspace_dim=args.subspace_dim,
-            proj_type=args.proj_type)
+            subspace_dim=_subspace_dim,
+            proj_type=_proj_type)
 
-    if args.network_type == "resnet20":
+    if _network_type == "resnet20":
         model = SubspaceResNet20(
             input_size=input_size,
             input_channels=input_channels,
             output_size=output_size,
-            subspace_dim=args.subspace_dim,
-            proj_type=args.proj_type)
+            subspace_dim=_subspace_dim,
+            proj_type=_proj_type)
     
     return data_module, model
 
@@ -112,16 +128,18 @@ def setup_model(args):
 def setup_trainer(args):
     """Set-up the trainer using the terminal inputs."""
 
+    # Explicit arguments
     _deterministic = True if args.deterministic==1 else False
-    _shuffle_pixels = True if args.shuffle_pixels==1 else False
+    _epochs = args.epochs
+    _logs_dir = args.logs_dir
 
     # Setup trainer
     trainer = Trainer(
         accelerator = "auto",
         devices = 1 if torch.cuda.is_available() else None,
-        max_epochs = args.epochs,
+        max_epochs = _epochs,
         callbacks = [TQDMProgressBar(refresh_rate=20)],
-        logger = CSVLogger(save_dir=args.logs_dir),
+        logger = CSVLogger(save_dir=_logs_dir),
         deterministic = _deterministic  # Reproducibility
     )
 
