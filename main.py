@@ -87,8 +87,8 @@ def setup_model(args):
             data_dir=PATH_DATASETS,
             batch_size=BATCH_SIZE,
             shuffle_pixels=_shuffle_pixels,
-            _shuffle_labels=_shuffle_labels,
-            _deterministic=_deterministic,
+            shuffle_labels=_shuffle_labels,
+            deterministic=_deterministic,
             seed=42)
         input_size = 32*32
         input_channels = 1

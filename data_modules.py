@@ -41,39 +41,79 @@ class PixelShuffleTransform(object):
             return data
 
 
-class ShuffledLabelsSubset(Dataset):
-    """
-    Create a subset of the dataset using the given indices.
-    If requested shuffle the labels of the subset.
+# class ShuffledLabelsSubset_v1(Dataset):
+#     """
+#     Create a subset of the dataset using the given indices.
+#     If requested shuffle the labels of the subset.
 
-    Args:
-        dataset (Dataset):      The original dataset
-        indices (List(int)):    The indices of the subset
-        shuffle (bool):         If True, shuffle the labels    
-    """
-    def __init__(self, dataset, indices, shuffle=False):
-        self.dataset = Subset(dataset, indices)
-        self.targets = [self.dataset[i][1] for i in range(len(self.dataset))]
-        
-        # print("targets before shuffling: ", self.targets[:10])
+#     Args:
+#         dataset (Dataset):      The original dataset
+#         indices (List(int)):    The indices of the subset
+#         shuffle (bool):         If True, shuffle the labels    
+#     """
+#     def __init__(self, dataset, indices, shuffle=False):
+#         self.dataset = Subset(dataset, indices)
+#         self.targets = []
 
-        # Shuffle the labels if requested
-        if shuffle:
-            self.shuffle_labels()
-        
-        # print("targets after shuffling: ", self.targets[:10])
-        # sys.exit(0)
+#         # Shuffle the labels if requested
+#         if shuffle:
+#             self.shuffle_labels()
 
-    def shuffle_labels(self):
-        random.shuffle(self.targets)
+#     def shuffle_labels(self):
+#         random.shuffle(self.targets)
 
-    def __getitem__(self, idx):
-        image = self.dataset[idx][0]
-        target = self.targets[idx]
-        return (image, target)
+#     def __getitem__(self, idx):
+#         image = self.dataset[idx][0]
+#         target = self.targets[idx]
+#         return (image, target)
 
-    def __len__(self):
-        return len(self.targets)
+#     def __len__(self):
+#         return len(self.targets)
+
+# class ShuffledLabelsMNIST(Dataset):
+#   def __init__(self, data_dir, train, transform):
+#     super(ShuffledLabelsMNIST, self).__init__()
+#     self.orig_mnist = MNIST(data_dir, train=train, transform=transform)
+
+#   def __getitem__(self, index):
+#     x, y = self.orig_mnist[index]       # Get original items
+#     new_x = x
+#     new_y = torch.randint(0, 10, (1,))  # Generate a random label
+#     return new_x, new_y
+
+#   def __len__(self):
+#     return self.orig_mnist.__len__()
+
+# def deep_subset(dataset, indices):
+#     """
+#     Create a subset of the dataset wrt the given indices.
+#     This function makes a deepy copy of the dataset data
+#     and targets and not just a reference.
+#     """
+    
+#     # Deep copy of the original dataset
+#     subset_data = []
+#     subset_targets = []
+#     for index in indices:
+#         data, targets = dataset()[index]
+#         subset_data.append(data.clone())
+#         subset_targets.append(targets.clone())
+
+#     # Make the subset
+#     subset = torch.utils.data.TensorDataset(torch.stack(subset_data), torch.stack(subset_targets))
+
+#     return subset
+
+# def shuffle_labels(dataset):
+#     """
+#     Shuffle the labels of the given dataset.
+#     """
+
+#     labels = dataset.targets
+#     random.shuffle(labels)
+#     dataset.targets = labels
+
+#     return dataset
 
 # =========
 #   MNIST
@@ -125,33 +165,36 @@ class MNISTDataModule(LightningDataModule):
 
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
-
-            # Shuffle the labels if requested
+            
             if self.shuffle_labels:
-                # Download two copy of the same dataset in order to apply 
-                # the shuffling of the labels only on the training dataset
+                # Download dataset twice, one time for train and one for validation.
+                # In this way we can shuffle the train labels without altering
+                # the validation ones.
                 mnist_train_full = MNIST(self.data_dir, train=True, transform=self.transform)
                 mnist_val_full = MNIST(self.data_dir, train=True, transform=self.transform)
+               
+                # Get original labels
+                original_train_labels = mnist_train_full.targets
 
-                # Get the indices and shuffle them
-                indices = list(range(len(mnist_train_full)))
-                shuffled_indices = torch.randperm(len(indices))
+                # Generate random labels for train
+                random_train_labels = torch.randint(0, 9, (len(original_train_labels),))
 
-                # Split train and validation wrt the shuffled indices
+                # Substitute original train labels with the random ones
+                mnist_train_full.targets = random_train_labels
+
+                # Get the right size for train and valdation
+                shuffled_indices = torch.randperm(len(mnist_train_full))
                 train_indices, val_indices = shuffled_indices[:55000], shuffled_indices[55000:]
-                self.mnist_train = ShuffledLabelsSubset(mnist_train_full, train_indices, shuffle=True)
-                self.mnist_val = ShuffledLabelsSubset(mnist_val_full, val_indices, shuffle=True)   # Do not shuffle the labels here
 
-                # print("original mnist val: ", mnist_val_full[55000])
-                # print("shuffled mnist val: ", self.mnist_val[0])
-                # print("Is the image the same: ", mnist_train_full[0][0] == self.mnist_train[0][0])
-                # sys.exit(0)
-
-            else:   # No label shuffling
+                # Build final train and validation dataset
+                self.mnist_train = Subset(mnist_train_full, train_indices)
+                self.mnist_val = Subset(mnist_val_full, val_indices)
+            
+            else:
                 # Download and transform
                 mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
 
-                # Split train and validation
+                # Split in train and validation
                 self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
         # Assign test dataset for use in dataloader(s)
@@ -220,14 +263,37 @@ class CIFAR10DataModule(LightningDataModule):
 
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
-            cifar10_full = CIFAR10(self.data_dir, train=True, transform=self.transform)
             
-            # Shuffle the labels if requested
             if self.shuffle_labels:
-                cifar10_full.targets = [random.randint(0, 9) for _ in range(len(cifar10_full))]
+                # Download dataset twice, one time for train and one for validation.
+                # In this way we can shuffle the train labels without altering
+                # the validation ones.
+                cifar10_train_full = CIFAR10(self.data_dir, train=True, transform=self.transform)
+                cifar10_val_full = CIFAR10(self.data_dir, train=True, transform=self.transform)
+               
+                # Get original labels
+                original_train_labels = cifar10_train_full.targets
+
+                # Generate random labels for train
+                random_train_labels = torch.randint(0, 9, (len(original_train_labels),))
+
+                # Substitute original train labels with the random ones
+                cifar10_train_full.targets = random_train_labels
+
+                # Get the right size for train and valdation
+                shuffled_indices = torch.randperm(len(cifar10_train_full))
+                train_indices, val_indices = shuffled_indices[:45000], shuffled_indices[5000:]
+
+                # Build final train and validation dataset
+                self.mnist_train = Subset(cifar10_train_full, train_indices)
+                self.mnist_val = Subset(cifar10_val_full, val_indices)
             
-            # Split train and validation
-            self.cifar10_train, self.cifar10_val = random_split(cifar10_full, [45000, 5000])
+            else:
+                # Download and transform
+                cifar10_full = CIFAR10(self.data_dir, train=True, transform=self.transform)
+                
+                # Split train and validation
+                self.cifar10_train, self.cifar10_val = random_split(cifar10_full, [45000, 5000])
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
