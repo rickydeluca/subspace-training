@@ -14,15 +14,16 @@ from torchmetrics import Accuracy
 #    FCN
 # =========
 class SubspaceFCN(LightningModule):
-    def __init__(self, input_size: int, input_channels: int, n_hidden: int, output_size: int, learning_rate=0.003, subspace_dim=None, proj_type="dense"):
+    def __init__(self, input_size: int, input_channels: int, hidden_width: int, output_size: int, hidden_depth=1, learning_rate=0.003, subspace_dim=None, proj_type="dense"):
 
         super().__init__()
 
         # Set class attributes
         self.input_size = input_size
         self.input_channels = input_channels
-        self.n_hidden = n_hidden
+        self.hidden_width = hidden_width
         self.output_size = output_size
+        self.hidden_depth = hidden_depth
         self.learning_rate = learning_rate
         self.proj_type = proj_type
 
@@ -44,18 +45,28 @@ class SubspaceFCN(LightningModule):
         self.theta_d = None     # tehta_D: trainable parameters in the subspace dimension d
 
         # Explicit the informations for each layer
-        # (as seen in https://github.com/greydanus/subspace-nn/blob/master/subspace_nn.py)
-        self.network = {'fc1':      (input_size * input_channels, n_hidden, 0.001), # weights from input to hidden1
-                        'fc2':      (n_hidden, n_hidden, 0.001),                    # weights from hidden1 to hidden2
-                        'fc3':      (n_hidden, output_size, 0.01),                  # weights from hidden2 to output
-                        'fc1_bias': (1, n_hidden, 0.0),                             # biases layer 1
-                        'fc2_bias': (1, n_hidden, 0.0),                             # biases layer 2
-                        'fc3_bias': (1, output_size, 0.0)}                          # biases layer 3
+        # (adapted from https://github.com/greydanus/subspace-nn/blob/master/subspace_nn.py)
+        # The weights for each layer have the follwing shape:
+        # (input_size, output_size, layer_repetition, std_deviation)
+        self.network = {'fc_in':        (input_size * input_channels, hidden_width, 1, 0.001),       # weights from input to hidden1
+                        'fc_hidden':    (hidden_width, hidden_width, self.hidden_depth, 0.001),    # weights from hidden1 to hidden_n-1
+                        'fc_out':       (hidden_width, output_size, 1, 0.01),                        # weights from hidden_n-1 to output
+                        'fc_in_bias':       (1, hidden_width, 1, 0.0),                               # biases layer 1
+                        'fc_hidden_bias':   (1, hidden_width, self.hidden_depth, 0.0),            # biases layers 1 to n-1
+                        'fc_out_bias':      (1, output_size, 1, 0.0)}                               # biases output layer
 
-        # Extract meta-informations of the network
+        # Extract meta-informations from the network
         self.weight_names = self.network.keys()
-        num_params_per_layer = [self.network[n][0] * self.network[n][1] for n in self.weight_names]
-        self.slice_indices = np.cumsum([0] + num_params_per_layer)
+
+        self.num_params_per_layer = []
+        for n in self.weight_names:
+            # Explicit the weights of the repeated hidden layers
+            n_reps = self.network[n][2]
+            for _ in range(n_reps):
+                self.num_params_per_layer.append(self.network[n][0] * self.network[n][1])
+
+
+        self.slice_indices = np.cumsum([0] + self.num_params_per_layer)
 
         # Setup for subspace training
         self.init_parameters()  # (init self.theta_0 tensor)
@@ -70,14 +81,20 @@ class SubspaceFCN(LightningModule):
         Random initializations of the network parameters (theta_0).
         """
 
-        # Initialize randomly the params for each layer
+        # Random initialization of the the params for each layer
         init_params_per_layer = []
 
+        idx = 0
         for n in self.weight_names:
-            num_layer_weights = self.network[n][0] * self.network[n][1]
-            layer_std_deviation = self.network[n][2]
+            n_times = self.network[n][2]    # Num times this layer is repeated
+            layer_std_deviation = self.network[n][3]
 
-            init_params_per_layer.append(torch.randn((num_layer_weights, 1)) * layer_std_deviation)
+            for _ in range(n_times):
+                init_params_per_layer.append(torch.randn((self.num_params_per_layer[idx], 1)) * layer_std_deviation)
+                idx += 1
+
+        # print(len(init_params_per_layer))
+        # sys.exit(0)
 
         # Concatenate all the initialized weights in a single
         # D-dimensional vector (theta_0)
@@ -91,7 +108,6 @@ class SubspaceFCN(LightningModule):
 
             # Init theta_d
             _theta_d = torch.zeros(self.subspace_dim, 1)
-            # _theta_d[0] = self.theta_0[0,0] / self.P[0,0]
 
             self.theta_d = nn.Parameter(_theta_d, requires_grad=True)
 
@@ -150,25 +166,46 @@ class SubspaceFCN(LightningModule):
                 return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
             
     def forward(self, x):
+
         # Get the projected parameters
         projected_params = self.project_params().to(self.device)
-
-        # Slice the parameters wrt to the weight in each layer
+        
+        # Slice the parameters wrt to the number of weigths in each layer
         sliced_params = {}
-        for idx, n in enumerate(self.weight_names):
-            sliced_params[n] = projected_params[self.slice_indices[idx]:self.slice_indices[idx+1]]
+        idx = 0
+        for n in self.weight_names:
+            sliced_params[n] = list()
+            n_reps = self.network[n][2]
+            for _ in range(n_reps):
+                sliced_params[n].append(projected_params[self.slice_indices[idx]:self.slice_indices[idx+1]])
+                idx += 1
 
         # Reshape the parameters like (in_layer_dim, out_layer_dim)
-        sliced_params = {k : v.reshape(self.network[k][0], self.network[k][1]).to(self.device) for k, v in sliced_params.items()}
+        weights = {}
+        for k, v_list in sliced_params.items():
+            weights[k] = [] # init the empty list of weights)
+            for v in v_list:
+                # print("v: ", v.shape)
+                # sys.exit(0)
+                w = v.squeeze().reshape(self.network[k][0], self.network[k][1]).to(self.device)
+                weights[k].append(w)
+
 
         # Get batch size
         batch_size = x.size(0)
 
         # Define the model with the custom parameters
         x = x.flatten(start_dim=1)
-        x = F.relu(x.mm(sliced_params['fc1']) + sliced_params['fc1_bias'].repeat(batch_size, 1))
-        x = F.relu(x.mm(sliced_params['fc2']) + sliced_params['fc2_bias'].repeat(batch_size, 1))
-        x = F.log_softmax(x.mm(sliced_params['fc3']) + sliced_params['fc3_bias'].repeat(batch_size, 1), dim=1)
+
+        # - Input
+        x = F.relu(x.mm(weights['fc_in'][0]) + weights['fc_in_bias'][0].repeat(batch_size, 1))
+
+        # - Hiddens
+        for i in range(self.hidden_depth):
+            x = F.relu(x.mm(weights['fc_hidden'][i]) + weights['fc_hidden_bias'][i].repeat(batch_size, 1))
+
+        # - Output
+        x = F.log_softmax(x.mm(weights['fc_out'][0]) + weights['fc_out_bias'][0].repeat(batch_size, 1), dim=1)
 
         return x
 
@@ -730,7 +767,7 @@ class SubspaceResNet20(LightningModule):
             'fc_bias':          [(output_size,), 1, 0.0]
         }
 
-        # Extract meta-informations of the network
+        # Extract meta-informations from the network
         self.weight_names = self.network.keys()
 
         self.num_params_per_layer = []

@@ -9,8 +9,10 @@ from pytorch_lightning.loggers import CSVLogger
 from data_modules import CIFAR10DataModule, MNISTDataModule
 
 # (Subspace) Networks
-from multiple_size_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
+from subspace_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
 
+# Custom logger
+from log_utils import CustomCSVLogger
 
 PATH_DATASETS = "./data/"
 BATCH_SIZE = 256 if torch.cuda.is_available() else 64
@@ -49,98 +51,123 @@ def parse_args():
                 help='Path to the directory in which store the training logs. (default: "logs/")')
     return parser.parse_args()
 
-
-def setup_model(args):
-    """ Set-up the model using the terminal inputs."""
-
-    # Explicit arguments
+def read_input(args):
+    """
+    Given the terminal inputs, create a dictionary of hyperparameters.
+    """
+    
+    # Explicit the arguments
     _dataset = args.dataset
     _network_type = args.network_type
-    _hidden_width = args.hidden_width
-    _hidden_depth = args.hidden_depth
-    _n_feature = args.n_feature
     _subspace_dim = args.subspace_dim
     _proj_type = args.proj_type
     _deterministic = True if args.deterministic==1 else False
     _shuffle_pixels = True if args.shuffle_pixels==1 else False
     _shuffle_labels = True if args.shuffle_labels==1 else False
+    _lr = args.lr
+    _epochs = args.epochs
+    _logs_dir = args.logs_dir
+    _hidden_width = args.hidden_width
+    _hidden_depth = args.hidden_depth
+    _n_feature = args.n_feature
+
+    # Create the dictionary
+    hyperparams = {
+        "dataset": _dataset,
+        "network_type": _network_type,
+        "subspace_dim": _subspace_dim,
+        "proj_type": _proj_type,
+        "deterministic": _deterministic,
+        "shuffle_pixels": _shuffle_pixels,
+        "shuffle_labels": _shuffle_labels,
+        "lr": _lr,
+        "epochs": _epochs,
+        "logs_dir": _logs_dir,
+        "hidden_width": _hidden_width,
+        "hidden_depth": _hidden_depth,
+        "n_feature": _n_feature
+    }
+
+    return hyperparams
+
+    
+def setup_model(hyperparams):
+    """ Set-up the model using the given hyperparameters."""
 
     # Reproducibility
-    if _deterministic:
+    if hyperparams["deterministic"]:
         seed_everything(42, workers=True)
 
     # Get the datamodule
-    if _dataset == "mnist":
+    if hyperparams["dataset"] == "mnist":
         data_module = MNISTDataModule(
             data_dir=PATH_DATASETS,
             batch_size=BATCH_SIZE,
-            shuffle_pixels=_shuffle_pixels,
-            shuffle_labels=_shuffle_labels,
-            deterministic=_deterministic,
+            shuffle_pixels=hyperparams["shuffle_pixels"],
+            shuffle_labels=hyperparams["shuffle_labels"],
+            deterministic=hyperparams["deterministic"],
             seed=42)
         input_size = 28*28
         input_channels = 1
         output_size = 10
 
-    if _dataset == "cifar10":
+    if hyperparams["dataset"] == "cifar10":
         data_module = CIFAR10DataModule(
             data_dir=PATH_DATASETS,
             batch_size=BATCH_SIZE,
-            shuffle_pixels=_shuffle_pixels,
-            shuffle_labels=_shuffle_labels,
-            deterministic=_deterministic,
+            shuffle_pixels=hyperparams["shuffle_pixels"],
+            shuffle_labels=hyperparams["shuffle_labels"],
+            deterministic= hyperparams["deterministic"],
             seed=42)
         input_size = 32*32
         input_channels = 1
         output_size = 10
 
     # Init the model
-    if _network_type == "fc":
+    if hyperparams["network_type"] == "fc":
         model = SubspaceFCN(
             input_size=input_size,
             input_channels=input_channels,
-            hidden_width=_hidden_width,
+            hidden_width=hyperparams["hidden_width"],
             output_size=output_size,
-            hidden_depth=_hidden_depth,
-            subspace_dim=_subspace_dim,
-            proj_type=_proj_type)
+            hidden_depth=hyperparams["hidden_depth"],
+            subspace_dim=hyperparams["subspace_dim"],
+            proj_type=hyperparams["proj_type"])
 
-    if _network_type == "lenet":
+    if hyperparams["network_type"] == "lenet":
         model = SubspaceLeNet(
             input_size=input_size,
             input_channels=input_channels,
-            n_feature=_n_feature,
+            n_feature=hyperparams["n_feature"],
             output_size=output_size,
-            subspace_dim=_subspace_dim,
-            proj_type=_proj_type)
+            subspace_dim=hyperparams["subspace_dim"],
+            proj_type=hyperparams["proj_type"])
 
-    if _network_type == "resnet20":
+    if hyperparams["network_type"]  == "resnet20":
         model = SubspaceResNet20(
             input_size=input_size,
             input_channels=input_channels,
             output_size=output_size,
-            subspace_dim=_subspace_dim,
-            proj_type=_proj_type)
+            subspace_dim=hyperparams["subspace_dim"],
+            proj_type=hyperparams["proj_type"])
     
     return data_module, model
 
 
-def setup_trainer(args):
-    """Set-up the trainer using the terminal inputs."""
-
-    # Explicit arguments
-    _deterministic = True if args.deterministic==1 else False
-    _epochs = args.epochs
-    _logs_dir = args.logs_dir
+def setup_trainer(hyperparams):
+    """Set-up the trainer using the given hyperparameters."""
+    
+    # Instantiate the custom CSV logger to explicit the settings of the experiment
+    custom_logger = CustomCSVLogger(hyperparams, save_dir=hyperparams["logs_dir"])
 
     # Setup trainer
     trainer = Trainer(
         accelerator = "auto",
         devices = 1 if torch.cuda.is_available() else None,
-        max_epochs = _epochs,
+        max_epochs = hyperparams["epochs"],
         callbacks = [TQDMProgressBar(refresh_rate=20)],
-        logger = CSVLogger(save_dir=_logs_dir),
-        deterministic = _deterministic  # Reproducibility
+        logger = custom_logger,
+        deterministic = hyperparams["deterministic"]  # Reproducibility
     )
 
     return trainer
@@ -150,12 +177,13 @@ if __name__ == "__main__":
     
     # Read input
     args = parse_args()
+    hyperparams = read_input(args)
 
     # Setup model
-    data_module, model = setup_model(args)
+    data_module, model = setup_model(hyperparams)
 
     # Setup trainer
-    trainer = setup_trainer(args)
+    trainer = setup_trainer(hyperparams)
 
     # Train and log
     trainer.fit(model, data_module)
