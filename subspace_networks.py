@@ -25,19 +25,9 @@ class SubspaceFCN(LightningModule):
         self.output_size = output_size
         self.hidden_depth = hidden_depth
         self.learning_rate = learning_rate
-        self.proj_type = proj_type
-
-        # If we are using the fastfood projection,
-        # then we need to round the subspace dimension
-        # to the first power of 2.
-        if proj_type == "fastfood" and subspace_dim is not None:
-            if not is_power_of_two(subspace_dim):
-                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
-                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
-        
         self.subspace_dim = subspace_dim
+        self.proj_type = proj_type        
                
-
         # Define subspace training attributes
         self.P = None           # projection matrix
         self.theta_D = None     # theta_D: theta_0 + P*theta_d
@@ -256,17 +246,8 @@ class SubspaceLeNet(LightningModule):
         self.n_feature      = n_feature
         self.output_size    = output_size
         self.learning_rate  = learning_rate
-        self.proj_type      = proj_type
-
-        # If we are using the fastfood projection,
-        # then we need to round the subspace dimension
-        # to the first power of 2.
-        if proj_type == "fastfood" and subspace_dim is not None:
-            if not is_power_of_two(subspace_dim):
-                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
-                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
-        
-        self.subspace_dim = subspace_dim
+        self.subspace_dim   = subspace_dim
+        self.proj_type      = proj_type        
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
@@ -486,17 +467,8 @@ class SubspaceCNN(LightningModule):
         self.n_feature      = n_feature
         self.output_size    = output_size
         self.learning_rate  = learning_rate
-        self.proj_type      = proj_type
-
-        # If we are using the fastfood projection,
-        # then we need to round the subspace dimension
-        # to the first power of 2.
-        if proj_type == "fastfood" and subspace_dim is not None:
-            if not is_power_of_two(subspace_dim):
-                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
-                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
-        
         self.subspace_dim = subspace_dim
+        self.proj_type      = proj_type
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
@@ -722,17 +694,8 @@ class SubspaceResNet20(LightningModule):
         self.input_channels = input_channels
         self.output_size    = output_size
         self.learning_rate  = learning_rate
+        self.subspace_dim   = subspace_dim
         self.proj_type      = proj_type
-
-        # If we are using the fastfood projection,
-        # then we need to round the subspace dimension
-        # to the first power of 2.
-        if proj_type == "fastfood" and subspace_dim is not None:
-            if not is_power_of_two(subspace_dim):
-                subspace_dim = int(np.power(2, np.floor(np.log2(subspace_dim)) + 1))
-                print(f"subspace_dim was not a power of 2, the new dimension is: {subspace_dim}")
-        
-        self.subspace_dim = subspace_dim
 
         # Define subspace training attributes
         self.P       = None     # projection matrix
