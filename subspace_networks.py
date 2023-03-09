@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
-from projection_utils import FastfoodProject, get_sparse_projection_matrix, is_power_of_two
+from projection_utils import FastfoodProject, get_sparse_projection_matrix
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -135,7 +135,8 @@ class SubspaceFCN(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
-            self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            # self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            self.P = _P
 
         # Fastfood projection
         elif self.proj_type == "fastfood":
@@ -149,11 +150,15 @@ class SubspaceFCN(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
+            if self.proj_type == "dense":
+                self.P = self.P.to(self.device)
+                return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "sparse":
+                return torch.sparse.mm(self.P.to(self.device).float(), self.theta_d).reshape(self.theta_0.size(0))
+            
             if self.proj_type == "fastfood":
                 return self.P.project(self.theta_d.cpu())
-            else:
-                self.P = self.P.to(self.device)  # move P to cuda (if using)
-                return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
             
     def forward(self, x):
 
@@ -361,7 +366,8 @@ class SubspaceLeNet(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
-            self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            # self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            self.P = _P
 
         # Fastfood projection
         elif self.proj_type == "fastfood":
@@ -375,11 +381,15 @@ class SubspaceLeNet(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D
         else:
-            if self.proj_type == "fastfood":
-                return self.P.project(self.theta_d.cpu())
-            else:
+            if self.proj_type == "dense":
                 self.P = self.P.to(self.device)
                 return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "sparse":
+                return torch.sparse.mm(self.P.to(self.device).float(), self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
 
     def forward(self, x):
 
@@ -582,7 +592,8 @@ class SubspaceCNN(LightningModule):
         # Sparse projection
         elif self.proj_type == "sparse":
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
-            self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            # self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            self.P = _P
 
         # Fastfood projection
         elif self.proj_type == "fastfood":
@@ -596,11 +607,15 @@ class SubspaceCNN(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D.to(self.device)
         else:
-            if self.proj_type == "fastfood":
-                return self.P.project(self.theta_d.cpu())
-            else:
+            if self.proj_type == "dense":
                 self.P = self.P.to(self.device)
                 return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "sparse":
+                return torch.sparse.mm(self.P.to(self.device).float(), self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
 
     def forward(self, x):
         # Split the trainable parameters in theta_D for each layer
@@ -676,9 +691,6 @@ class SubspaceCNN(LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
-
-
-
 
 
 # ============
@@ -825,7 +837,8 @@ class SubspaceResNet20(LightningModule):
         elif self.proj_type == "sparse":
             # Sparse projection
             _P = get_sparse_projection_matrix(D=self.theta_0.size(0), d=self.subspace_dim)
-            self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            # self.P = Variable(torch.Tensor(_P), requires_grad=False)
+            self.P = _P
 
         # Fastfood projection
         elif self.proj_type == "fastfood":
@@ -839,11 +852,16 @@ class SubspaceResNet20(LightningModule):
         if self.subspace_dim is None:
             return self.theta_D.to(self.device)
         else:
-            if self.proj_type == "fastfood":
-                return self.P.project(self.theta_d.cpu())
-            else:
+            if self.proj_type == "dense":
                 self.P = self.P.to(self.device)
                 return self.P.mm(self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "sparse":
+                return torch.sparse.mm(self.P.to(self.device).float(), self.theta_d).reshape(self.theta_0.size(0))
+            
+            if self.proj_type == "fastfood":
+                return self.P.project(self.theta_d.cpu())
+                
 
     def forward(self, x):
 

@@ -44,7 +44,10 @@ def get_sparse_projection_matrix(D: int, d: int, density="auto", seed=None):
     # Make the sparse random matrix
     P = random_projection._sparse_random_matrix(D, d, density=density, random_state=seed)   # return csr_matrix
     
-    return P.todense()
+    # Convert it to a pytorch sparse tensor
+    P = torch.from_numpy(P.toarray()).to_sparse()
+
+    return P
 
 
 # ===============================
