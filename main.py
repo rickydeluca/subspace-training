@@ -3,12 +3,11 @@ import argparse
 import torch
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
-from pytorch_lightning.loggers import CSVLogger
 
 # Datamodules
 from data_modules import CIFAR10DataModule, MNISTDataModule
 
-# (Subspace) Networks
+# Subspace networks
 from subspace_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
 
 # Custom logger
@@ -26,7 +25,7 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default="mnist",
                     help='The dataset to use. Choose between: "mnist" or "cifar10". (default: mnist)')
     parser.add_argument('--network_type', type=str, default="fc",
-                    help='The neural network to use. Choose between: "fc" (fully connected), "lenet", "resnet20". (default: "fc")')
+                    help='The neural network to use. Choose between: "fc", "lenet", "resnet20". (default: "fc")')
     parser.add_argument('--subspace_dim', type=int, default=None,
                     help='Number parameters to use in the subspace training. If None do not use subspace trainig. (default: None)')
     parser.add_argument('--proj_type', type=str, default="dense",
@@ -55,37 +54,21 @@ def read_input(args):
     """
     Given the terminal inputs, create a dictionary of hyperparameters.
     """
-    
-    # Explicit the arguments
-    _dataset = args.dataset
-    _network_type = args.network_type
-    _subspace_dim = args.subspace_dim
-    _proj_type = args.proj_type
-    _deterministic = True if args.deterministic==1 else False
-    _shuffle_pixels = True if args.shuffle_pixels==1 else False
-    _shuffle_labels = True if args.shuffle_labels==1 else False
-    _lr = args.lr
-    _epochs = args.epochs
-    _logs_dir = args.logs_dir
-    _hidden_width = args.hidden_width
-    _hidden_depth = args.hidden_depth
-    _n_feature = args.n_feature
 
-    # Create the dictionary
     hyperparams = {
-        "dataset": _dataset,
-        "network_type": _network_type,
-        "subspace_dim": _subspace_dim,
-        "proj_type": _proj_type,
-        "deterministic": _deterministic,
-        "shuffle_pixels": _shuffle_pixels,
-        "shuffle_labels": _shuffle_labels,
-        "lr": _lr,
-        "epochs": _epochs,
-        "logs_dir": _logs_dir,
-        "hidden_width": _hidden_width,
-        "hidden_depth": _hidden_depth,
-        "n_feature": _n_feature
+        "dataset":          args.dataset,
+        "network_type":     args.network_type,
+        "subspace_dim":     args.subspace_dim,
+        "proj_type":        args.proj_type,
+        "deterministic":    True if args.deterministic==1 else False,
+        "shuffle_pixels":   True if args.shuffle_pixels==1 else False,
+        "shuffle_labels":   True if args.shuffle_labels==1 else False,
+        "lr":               args.lr,
+        "epochs":           args.epochs,
+        "logs_dir":         args.logs_dir,
+        "hidden_width":     args.hidden_width,
+        "hidden_depth":     args.hidden_depth,
+        "n_feature":        args.n_feature
     }
 
     return hyperparams

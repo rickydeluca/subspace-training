@@ -9,22 +9,30 @@ from sklearn import random_projection
 from sklearn.utils import check_random_state
 
 
-# Check if is power of two
 def is_power_of_two(n):
-    '''
-    Check if the integer n is a power of two or not.
-    '''
+    """Check if the integer n is a power of two or not."""
+    
     return n != 0 and ((n & (n - 1)) == 0)
+
+def round_to_power_of_two(n):
+    """
+    If n is not a power of two, return the first m > n 
+    that satisfy that property.
+    """
+
+    if not is_power_of_two(n):
+        return int(np.power(2, np.floor(np.log2(n)) + 1))
+    else:
+        return n
 
 # =============================
 #       SPARSE PROJECTION 
 # =============================
 def get_sparse_projection_matrix(D: int, d: int, density="auto", seed=None):
-    '''
+    """
     Generate a random sparse projection matrix of size (D x d).
-    
-    Wrapper for scikit-learn/random_projection.py
-    '''
+    This is a rapper for scikit-learn/random_projection.py
+    """
     
     # Check input values
     random_projection._check_input_size(D, d)
@@ -37,8 +45,6 @@ def get_sparse_projection_matrix(D: int, d: int, density="auto", seed=None):
     P = random_projection._sparse_random_matrix(D, d, density=density, random_state=seed)   # return csr_matrix
     
     return P.todense()
-
-
 
 
 # ===============================
@@ -67,7 +73,6 @@ def _Pi_perm_order(d, rng=None):
     else:
         return rng.permutation(d)
     
-
 
 class FWHT(torch.autograd.Function):
 
@@ -128,7 +133,7 @@ class FastfoodProject(object):
     """
 
     def __init__(self, d, n, seed=42):
-        self.d = d
+        self.d = round_to_power_of_two(d)
         self.n = n
         self.rng = random.RandomState(seed)
         
@@ -139,10 +144,10 @@ class FastfoodProject(object):
         self.float_replicates = float(self.n)/self.d
         self.replicates = int(np.ceil(self.float_replicates))
         
-        for ii in range(self.replicates):
-            self.B.append(torch.from_numpy(_B_pm1(d, rng=self.rng)[:,np.newaxis]))
-            self.Pi.append(torch.from_numpy(_Pi_perm_order(d, rng=self.rng)))
-            self.G.append(torch.from_numpy(_G_gauss(d, rng=self.rng)[:,np.newaxis]))
+        for _ in range(self.replicates):
+            self.B.append(torch.from_numpy(_B_pm1(self.d, rng=self.rng)[:,np.newaxis]))
+            self.Pi.append(torch.from_numpy(_Pi_perm_order(self.d, rng=self.rng)))
+            self.G.append(torch.from_numpy(_G_gauss(self.d, rng=self.rng)[:,np.newaxis]))
 
     def project_i(self, x, i):
         norm_by = math.sqrt((self.G[i]**2).sum() * self.d)
@@ -161,6 +166,15 @@ class FastfoodProject(object):
         return ret
     
     def project(self, x):
+
+        # Zero-pad x to make its dimension a power of 2 if necessary
+        orig_d = x.shape[0]
+        d = round_to_power_of_two(orig_d)               # if it is already a power of 2, do nothing
+        
+        zeros = torch.zeros((d - orig_d), x.shape[1])   # how much zeros
+        
+        x = torch.cat((x, zeros), dim=0)                # padding
+
         rets = []
         for ii in range(self.replicates):
             rets.append(self.project_i(x, ii))
