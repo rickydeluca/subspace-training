@@ -62,7 +62,7 @@ def read_input(args):
     hyperparams = {
         "dataset":          args.dataset,
         "network_type":     args.network,
-        "subspace_dim":     args.subspace_dim,
+        "subspace_dim":     1 if args.subspace_dim==0 else args.subspace_dim,
         "proj_type":        args.proj,
         "deterministic":    True if args.deterministic==1 else False,
         "shuffle_pixels":   True if args.shuffle_pixels==1 else False,
