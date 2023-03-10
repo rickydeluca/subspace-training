@@ -6,12 +6,10 @@ from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
 # Datamodules
 from data_modules import CIFAR10DataModule, MNISTDataModule
-
+# Custom logger
+from log_utils import CustomCSVLogger, save_results
 # Subspace networks
 from subspace_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
-
-# Custom logger
-from log_utils import CustomCSVLogger
 
 PATH_DATASETS = "./data/"
 BATCH_SIZE = 256 if torch.cuda.is_available() else 64
@@ -24,11 +22,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Set the hyperparameters for the training.')
     parser.add_argument('--dataset', type=str, default="mnist",
                     help='The dataset to use. Choose between: "mnist" or "cifar10". (default: mnist)')
-    parser.add_argument('--network_type', type=str, default="fc",
+    parser.add_argument('--network', type=str, default="fc",
                     help='The neural network to use. Choose between: "fc", "lenet", "resnet20". (default: "fc")')
     parser.add_argument('--subspace_dim', type=int, default=None,
                     help='Number parameters to use in the subspace training. If None do not use subspace trainig. (default: None)')
-    parser.add_argument('--proj_type', type=str, default="dense",
+    parser.add_argument('--proj', type=str, default="dense",
                     help='The projection matrix to use. Choose between: "dense", "sparse" or "fastfood". If subspace dimension is None, ignore this parameter. (default: "dense")')
     parser.add_argument('--deterministic', type=int, default=1,
                     help='Choose if we want the training to act deterministically. (default: 1)')
@@ -48,6 +46,12 @@ def parse_args():
                     help='Number of features for CNNs. (default: 6)')
     parser.add_argument('--logs_dir', type=str, default="logs/",
                 help='Path to the directory in which store the training logs. (default: "logs/")')
+    parser.add_argument('--res_dir', type=str, default="results/",
+                help='Path to the directory in which store the test metrics. (default: "results/")')
+    parser.add_argument('--test', type=str, default="subspace",
+                    help='Which type of data we are collecting: "subspace" for subspace dim vs test accuracy; "baseline" for num of params VS baseline value. (default: "subspace")')
+   
+    
     return parser.parse_args()
 
 def read_input(args):
@@ -57,15 +61,17 @@ def read_input(args):
 
     hyperparams = {
         "dataset":          args.dataset,
-        "network_type":     args.network_type,
+        "network_type":     args.network,
         "subspace_dim":     args.subspace_dim,
-        "proj_type":        args.proj_type,
+        "proj_type":        args.proj,
         "deterministic":    True if args.deterministic==1 else False,
         "shuffle_pixels":   True if args.shuffle_pixels==1 else False,
         "shuffle_labels":   True if args.shuffle_labels==1 else False,
         "lr":               args.lr,
         "epochs":           args.epochs,
         "logs_dir":         args.logs_dir,
+        "res_dir":          args.res_dir,
+        "test":             args.test,
         "hidden_width":     args.hidden_width,
         "hidden_depth":     args.hidden_depth,
         "n_feature":        args.n_feature
@@ -173,3 +179,6 @@ if __name__ == "__main__":
 
     # Test and log
     test_metrics = trainer.test(model, data_module)
+
+    # Save test metrics
+    save_results(model, test_metrics[0], hyperparams)

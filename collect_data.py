@@ -3,23 +3,25 @@ import sys
 import pandas as pd
 import torch
 
-from main import BATCH_SIZE, PATH_DATASETS, setup_model, setup_trainer
+from main import PATH_DATASETS, BATCH_SIZE, setup_model, setup_trainer
 
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 # Choose which test to run
-test = [0, 1]    # if test_i == 1, run it, otherwise skip it
+test = [1, 0]    # if test_i == 1, run it, otherwise skip it
 
 # Define hyperparams
 hidden_depths = [1, 2, 3, 4, 5]
 hidden_widths = [50, 100, 200, 400]
-subspace_dims = list(range(0, 1600, 100)) # 0, 100, 200, ..., 1500
+# subspace_dims = list(range(0, 1600, 100)) # 0, 100, 200, ..., 1500
+subspace_dims = [1000, 1000, 1000]
 n_feature = list(range(1, 31, 1)) # 1, 2, 3, ..., 30
 network_types = ["fc", "lenet", "resnet20"]
+# network_types = ["lenet", "resnet20"]
 datasets = ["mnist", "cifar10"]
-epochs = 10
+epochs = 1
 lr = 3e-3
 
 # ==================================================================
@@ -45,14 +47,14 @@ if test[0] == 1:
                             if s == 0:  # No learning is possibile with zero parameters
                                 data["subspace_dim"].append(s)
                                 data["test_loss"].append(sys.float_info.max)
-                                data["test_acc"].append(0)
+                                data["test_acc"].append(0.0)
                                 continue
 
                             hyperparams = {
                                 "dataset":          d,
                                 "network_type":     n,
                                 "subspace_dim":     s,
-                                "proj_type":        "sparse",
+                                "proj_type":        "dense",
                                 "deterministic":    True,
                                 "shuffle_pixels":   False,
                                 "shuffle_labels":   False,
@@ -83,14 +85,16 @@ if test[0] == 1:
 
                             # Free memory to handle future iterations
                             del model
+                            del data_module
+                            del test_metrics
+                            del trainer
                             torch.cuda.empty_cache()
-                            torch.cuda.reset_max_memory_allocated()
 
                         # Convert the dictionary to a dataframe
                         df = pd.DataFrame.from_dict(data)
 
                         # Save the dataframe to a csv file
-                        df.to_csv(f"results/subspace_{d}_{n}_width_{hw}_depth_{hd}_epochs_{epochs}_lr_{lr}.csv")
+                        df.to_csv(f"results/subspace/subspace_{d}_{n}_width_{hw}_depth_{hd}_epochs_{epochs}_lr_{lr}.csv")
 
             # If it is a convolutional network, test for different number of features
             else:
@@ -112,7 +116,7 @@ if test[0] == 1:
                             "dataset":          d,
                             "network_type":     n,
                             "subspace_dim":     s,
-                            "proj_type":        "sparse",
+                            "proj_type":        "dense",
                             "deterministic":    True,
                             "shuffle_pixels":   False,
                             "shuffle_labels":   False,
@@ -142,15 +146,15 @@ if test[0] == 1:
                         data["test_acc"].append(test_metrics[0]["test_acc"])
 
                         # Free memory to handle future iterations
-                        del model
-                        torch.cuda.empty_cache()
-                        torch.cuda.reset_max_memory_allocated()
+                        with torch.no_grad():
+                            del model
+                            torch.cuda.empty_cache()
 
                     # Convert the dictionary to a dataframe
                     df = pd.DataFrame.from_dict(data)
 
                     # Save the dataframe to a csv file
-                    df.to_csv(f"results/subspace_{d}_{n}_nfeature_{nf}_epochs_{epochs}_lr_{lr}.csv")
+                    df.to_csv(f"results/subspace/subspace_{d}_{n}_nfeature_{nf}_epochs_{epochs}_lr_{lr}.csv")
 
 
 # ==================================================================
@@ -207,10 +211,9 @@ if test[1] == 1:
                         data["baseline"].append(test_metrics[0]["test_acc"])
 
                         # Free memory to handle future iterations
-                        del model
-                        torch.cuda.empty_cache()
-                        torch.cuda.reset_max_memory_allocated()
-                        
+                        with torch.no_grad():
+                            del model
+                            torch.cuda.empty_cache()                        
                     
                 # Convert the dictionary to dataframe and save it to a csv file
                 df = pd.DataFrame.from_dict(data)
@@ -259,10 +262,9 @@ if test[1] == 1:
                     data["baseline"].append(test_metrics[0]["test_acc"])
 
                     # Free memory to handle future iterations
-                    del model
-                    torch.cuda.empty_cache()
-                    torch.cuda.reset_max_memory_allocated()
-                    
+                    with torch.no_grad():
+                        del model
+                        torch.cuda.empty_cache()                    
                 
                 # Convert the dictionary to dataframe and save it to a csv file
                 df = pd.DataFrame.from_dict(data)
