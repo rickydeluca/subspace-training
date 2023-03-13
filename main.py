@@ -1,4 +1,6 @@
 import argparse
+import time
+from datetime import timedelta
 
 import torch
 from pytorch_lightning import Trainer, seed_everything
@@ -6,8 +8,9 @@ from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
 # Datamodules
 from data_modules import CIFAR10DataModule, MNISTDataModule
-# Custom logger
-from log_utils import CustomCSVLogger, save_results
+# Log utilitis
+from log_utils import (CustomCSVLogger, ForwardBackwardTimingCallback,
+                       save_results)
 # Subspace networks
 from subspace_networks import SubspaceFCN, SubspaceLeNet, SubspaceResNet20
 
@@ -48,8 +51,8 @@ def parse_args():
                 help='Path to the directory in which store the training logs. (default: "logs/")')
     parser.add_argument('--res_dir', type=str, default="results/",
                 help='Path to the directory in which store the test metrics. (default: "results/")')
-    parser.add_argument('--test', type=str, default="subspace",
-                    help='Which type of data we are collecting: "subspace" for subspace dim vs test accuracy; "baseline" for num of params VS baseline value. (default: "subspace")')
+    parser.add_argument('--test', type=str, default=None,
+                    help='Which type of data we are collecting: "subspace" for subspace dim vs test accuracy; "baseline" for num of params VS baseline value; "time" for forward+backword pass time. (default: None)')
    
     
     return parser.parse_args()
@@ -62,7 +65,7 @@ def read_input(args):
     hyperparams = {
         "dataset":          args.dataset,
         "network_type":     args.network,
-        "subspace_dim":     1 if args.subspace_dim==0 else args.subspace_dim,
+        "subspace_dim":     args.subspace_dim,
         "proj_type":        args.proj,
         "deterministic":    True if args.deterministic==1 else False,
         "shuffle_pixels":   True if args.shuffle_pixels==1 else False,
@@ -113,6 +116,7 @@ def setup_model(hyperparams):
         output_size = 10
 
     # Init the model
+
     if hyperparams["network_type"] == "fc":
         model = SubspaceFCN(
             input_size=input_size,
@@ -148,7 +152,9 @@ def setup_trainer(hyperparams):
     
     # Instantiate the custom CSV logger to explicit the settings of the experiment
     custom_logger = CustomCSVLogger(hyperparams, save_dir=hyperparams["logs_dir"])
-
+    
+    timing_callback = ForwardBackwardTimingCallback()
+    
     # Setup trainer
     trainer = Trainer(
         accelerator = "auto",
@@ -156,10 +162,17 @@ def setup_trainer(hyperparams):
         max_epochs = hyperparams["epochs"],
         callbacks = [TQDMProgressBar(refresh_rate=20)],
         logger = custom_logger,
-        deterministic = hyperparams["deterministic"]  # Reproducibility
+        deterministic = hyperparams["deterministic"],  # Reproducibility
+        # Reduce number of steps if we are timing the forward/backward pass
+        max_steps=1 if hyperparams['test'] == 'time' else None,
+        max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
     )
 
-    return trainer
+    # Time average forward + bacward pass if requested
+    if hyperparams['test'] == 'time':
+        trainer.callbacks.append(timing_callback)
+
+    return trainer, timing_callback
 
 
 if __name__ == "__main__":
@@ -168,17 +181,29 @@ if __name__ == "__main__":
     args = parse_args()
     hyperparams = read_input(args)
 
-    # Setup model
-    data_module, model = setup_model(hyperparams)
+    # Setup model (with time limit)
+    model = None
+    time_limit_minutes = 1
+    start_time = time.time()
+    while model is None and (time.time() - start_time) < time_limit_minutes*60:
+        try:
+            data_module, model = setup_model(hyperparams)
+        except:
+            raise Exception("Error in model initialization")
+    if model is None:
+        raise Exception("Could not initialize model in time limit")
 
+    
     # Setup trainer
-    trainer = setup_trainer(hyperparams)
+    trainer, timing_callback = setup_trainer(hyperparams)
 
     # Train and log
-    trainer.fit(model, data_module)
+    train_results = trainer.fit(model, data_module)
 
     # Test and log
     test_metrics = trainer.test(model, data_module)
 
     # Save test metrics
-    save_results(model, test_metrics[0], hyperparams)
+    if hyperparams['test'] is not None:
+        output = save_results(model, test_metrics[0], timing_callback, hyperparams)
+        print(output)

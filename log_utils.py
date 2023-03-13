@@ -1,7 +1,13 @@
-import os
-import sys
 import csv
+import os
+import time
+from typing import Any
+
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.utilities.types import STEP_OUTPUT
+
 
 def count_params(model):
     """
@@ -9,7 +15,7 @@ def count_params(model):
     """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def save_results(model, test_metrics, hyperparams):
+def save_results(model, test_metrics, timing_callback, hyperparams):
     """
     Store the test metrics in a csv file
     """
@@ -23,7 +29,7 @@ def save_results(model, test_metrics, hyperparams):
     # ================================
     if test == "subspace":
         # Define the outfile path wrt the hyperparams
-        outfile += f"/subspace_{hyperparams['dataset']}"
+        outfile += f"/subspace/subspace_{hyperparams['dataset']}"
 
         if hyperparams['shuffle_pixels']:
             outfile += f"_shuffled_pixels"
@@ -61,13 +67,15 @@ def save_results(model, test_metrics, hyperparams):
                 # Write data
                 row = [hyperparams['subspace_dim'], test_metrics['test_acc'], test_metrics['test_loss']]
                 writer.writerow(row)
+        
+        return
 
     # ============================
     #     N_PARAMS VS BASELINE    
     # ============================
     if test == "baseline":
         # Define the outfile path name wrt the hyperparams
-        outfile += f"/baseline_{hyperparams['dataset']}"
+        outfile += f"/baseline/baseline_{hyperparams['dataset']}"
         
         if hyperparams['shuffle_pixels']:
             outfile += f"_shuffled_pixels"
@@ -110,6 +118,60 @@ def save_results(model, test_metrics, hyperparams):
                     row = [hyperparams['n_feature'], total_params, test_metrics['test_acc']]
 
                 writer.writerow(row)
+    
+        return
+
+    # =======================================
+    #   AVERAGE FORWARD + BACKWARD DURATION
+    # =======================================
+    if hyperparams['test'] == 'time':
+        avg_forward_time, avg_backward_time = timing_callback.get_avg_durations()
+        avg_total_time = avg_forward_time + avg_backward_time
+        
+        # Return without write on CSV because it will be handled by the shell script
+        return avg_total_time
+
+
+class ForwardBackwardTimingCallback(Callback):
+    def __init__(self):
+        super().__init__()
+        self.forward_time = 0.0
+        self.backward_time = 0.0
+        self.num_forward_passes = 0
+        self.num_backward_passes = 0
+        self.avg_forward_time = 0.0
+        self.avg_backward_time = 0.0
+
+    def on_train_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int):
+        self.start_time = time.time()
+
+    def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int
+    ):
+        end_time = time.time()
+        batch_time = end_time - self.start_time
+
+        if trainer.training:
+            if pl_module.training:
+                self.backward_time += batch_time
+                self.num_backward_passes += 1
+            else:
+                self.forward_time += batch_time
+                self.num_forward_passes += 1
+
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+        self.avg_forward_time = self.forward_time / self.num_forward_passes if self.num_forward_passes > 0 else 0.0
+        self.avg_backward_time = self.backward_time / self.num_backward_passes if self.num_backward_passes > 0 else 0.0
+
+        print(f"Average duration of one forward pass: {self.avg_forward_time:.4f} seconds")
+        print(f"Average duration of one backward pass: {self.avg_backward_time:.4f} seconds")
+
+        self.forward_time = 0.0
+        self.backward_time = 0.0
+        self.num_forward_passes = 0
+        self.num_backward_passes = 0
+
+    def get_avg_durations(self):
+        return self.avg_forward_time, self.avg_backward_time
 
 
 class CustomCSVLogger(CSVLogger):
@@ -156,7 +218,6 @@ class CustomCSVLogger(CSVLogger):
                 else:
                     filename = f"dataset_{hp['dataset']}_network_{hp['network_type']}_direct_width_{hp['hidden_width']}_depth_{hp['hidden_depth']}.csv"
         
-
             # Return the full path to the log file
             return filename
         
@@ -188,6 +249,5 @@ class CustomCSVLogger(CSVLogger):
                 else:
                     filename = f"dataset_{hp['dataset']}_network_{hp['network_type']}_direct_n_feature_{hp['n_feature']}.csv"
         
-
             # Return the full path to the log file
             return filename
