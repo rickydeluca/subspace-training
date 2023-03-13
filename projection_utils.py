@@ -164,7 +164,7 @@ class FastfoodProject(object):
         # Normalize the result.
         # We need to use this function to have a not in place division 
         # and keep the gradient safe.
-        ret = torch.div(ret, norm_by)   
+        ret = torch.div(ret, norm_by) 
 
         return ret
     
@@ -172,19 +172,22 @@ class FastfoodProject(object):
 
         # Zero-pad x to make its dimension a power of 2 if necessary
         orig_d = x.shape[0]
-        d = round_to_power_of_two(orig_d)               # if it is already a power of 2, do nothing
+        d = round_to_power_of_two(orig_d)   # if it is already a power of 2, do nothing
         
         zeros = torch.zeros((d - orig_d), x.shape[1])   # how much zeros
         
-        x = torch.cat((x, zeros), dim=0)                # padding
-
+        x = torch.cat((x, zeros), dim=0)    # padding
+        
         rets = []
+        # print("How many replicates: ", self.replicates)
         for ii in range(self.replicates):
+            # print(f"iter {ii}")
             rets.append(self.project_i(x, ii))
         
         # Stack in a single tensor
         rets = torch.vstack(rets).to(torch.float)
-
+        # print("Done")
+        # sys.exit(0)
         # Cut out all the exceeding rows and return
         return rets[:self.n, :]
 
