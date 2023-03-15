@@ -155,22 +155,32 @@ def setup_trainer(hyperparams):
     
     timing_callback = ForwardBackwardTimingCallback()
     
-    # Setup trainer
-    trainer = Trainer(
-        accelerator = "auto",
-        devices = 1 if torch.cuda.is_available() else None,
-        max_epochs = hyperparams["epochs"],
-        callbacks = [TQDMProgressBar(refresh_rate=20)],
-        logger = custom_logger,
-        deterministic = hyperparams["deterministic"],  # Reproducibility
-        # Reduce number of steps if we are timing the forward/backward pass
-        max_steps=1 if hyperparams['test'] == 'time' else None,
-        max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
-    )
-
     # Time average forward + bacward pass if requested
     if hyperparams['test'] == 'time':
+        # Setup trainer
+        trainer = Trainer(
+            accelerator = "auto",
+            devices = 1 if torch.cuda.is_available() else None,
+            max_epochs = hyperparams["epochs"],
+            callbacks = [TQDMProgressBar(refresh_rate=20), timing_callback],
+            logger = custom_logger,
+            deterministic = hyperparams["deterministic"],  # Reproducibility
+            # Reduce number of steps if we are timing the forward/backward pass
+            max_steps=1 if hyperparams['test'] == 'time' else None,
+            max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
+        )
+        
         trainer.callbacks.append(timing_callback)
+    
+    else:
+        trainer = Trainer(
+            accelerator = "auto",
+            devices = 1 if torch.cuda.is_available() else None,
+            max_epochs = hyperparams["epochs"],
+            callbacks = [TQDMProgressBar(refresh_rate=20)],
+            logger = custom_logger,
+            deterministic = hyperparams["deterministic"],  # Reproducibility
+        )
 
     return trainer, timing_callback
 

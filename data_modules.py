@@ -1,12 +1,10 @@
 import multiprocessing
 import random
-import sys
 
 import numpy as np
-import plotly.express as px
 import torch
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader, random_split, Dataset, Subset
+from torch.utils.data import DataLoader, random_split, Subset
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, MNIST
 
@@ -40,80 +38,6 @@ class PixelShuffleTransform(object):
         else:
             return data
 
-
-# class ShuffledLabelsSubset_v1(Dataset):
-#     """
-#     Create a subset of the dataset using the given indices.
-#     If requested shuffle the labels of the subset.
-
-#     Args:
-#         dataset (Dataset):      The original dataset
-#         indices (List(int)):    The indices of the subset
-#         shuffle (bool):         If True, shuffle the labels    
-#     """
-#     def __init__(self, dataset, indices, shuffle=False):
-#         self.dataset = Subset(dataset, indices)
-#         self.targets = []
-
-#         # Shuffle the labels if requested
-#         if shuffle:
-#             self.shuffle_labels()
-
-#     def shuffle_labels(self):
-#         random.shuffle(self.targets)
-
-#     def __getitem__(self, idx):
-#         image = self.dataset[idx][0]
-#         target = self.targets[idx]
-#         return (image, target)
-
-#     def __len__(self):
-#         return len(self.targets)
-
-# class ShuffledLabelsMNIST(Dataset):
-#   def __init__(self, data_dir, train, transform):
-#     super(ShuffledLabelsMNIST, self).__init__()
-#     self.orig_mnist = MNIST(data_dir, train=train, transform=transform)
-
-#   def __getitem__(self, index):
-#     x, y = self.orig_mnist[index]       # Get original items
-#     new_x = x
-#     new_y = torch.randint(0, 10, (1,))  # Generate a random label
-#     return new_x, new_y
-
-#   def __len__(self):
-#     return self.orig_mnist.__len__()
-
-# def deep_subset(dataset, indices):
-#     """
-#     Create a subset of the dataset wrt the given indices.
-#     This function makes a deepy copy of the dataset data
-#     and targets and not just a reference.
-#     """
-    
-#     # Deep copy of the original dataset
-#     subset_data = []
-#     subset_targets = []
-#     for index in indices:
-#         data, targets = dataset()[index]
-#         subset_data.append(data.clone())
-#         subset_targets.append(targets.clone())
-
-#     # Make the subset
-#     subset = torch.utils.data.TensorDataset(torch.stack(subset_data), torch.stack(subset_targets))
-
-#     return subset
-
-# def shuffle_labels(dataset):
-#     """
-#     Shuffle the labels of the given dataset.
-#     """
-
-#     labels = dataset.targets
-#     random.shuffle(labels)
-#     dataset.targets = labels
-
-#     return dataset
 
 # =========
 #   MNIST

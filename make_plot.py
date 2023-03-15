@@ -1,31 +1,104 @@
 import csv
-import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-def get_baseline_fc(filename, depth, width):
-    """
-    Get the baseline test accuracy for the fully-connected network
-    with the given depth and width.
-    """
-    with open(filename, 'r') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if row[0] == depth and row[1] == width:
-                return row[3]
-    return None
 
-def get_baseline_cnn(filename, n_feauture):
+def get_metadata_from(filename):
     """
-    Get the baseline test accuracy for the CNN with the given number of features.
+    Given the name of a CSV file, return a dictionary containing the metadata
+    of the newtwork.
     """
-    with open(filename, 'r') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if row[0] == n_feauture:
-                return row[2]
-    return None
+    # Extract metadata from the filename
+    filename = filename.split('/')[-1]
+    filename = filename.split('.csv')[0]
+    filename = filename.split('_')
+    
+    test = filename[0]
+    dataset = None
+    network_type = None
+    depth = None
+    width = None
+    n_feature = None    
+    n_params = None
+    epochs = None
+    lr = None
+    
+    if test == 'subspace':
+        dataset = filename[1]
+        network_type = filename[2]
+        
+        if network_type == 'fc':
+            depth = filename[4]
+            width = filename[6]
+            epochs = filename[8]
+            lr = filename[10]
 
+        else:
+            n_feature = filename[4]
+            epochs = filename[6]
+            lr = filename[8]
+
+    elif test == 'baselines':
+        dataset = filename[1]
+        network_type = filename[2]
+        epochs = filename[4]
+        lr = filename[6]
+    
+    elif test == 'time':
+        dataset = filename[1]
+        network_type = filename[2]
+        n_params = filename[3]
+
+    else:
+        raise ValueError(f'File with name {filename} not found!')
+
+    # Return a dictionary containing the metadata
+    metadata = {
+        'dataset': dataset,
+        'network_type': network_type,
+        'depth': int(depth) if network_type == 'fc' and test == 'subspace' else None,
+        'width': int(width) if network_type == 'fc' and test == 'subspace' else None,
+        'n_feature': int(n_feature) if network_type != 'fc' and test == 'subspace' else None,
+        'epochs': int(epochs),
+        'lr': float(lr),
+        'n_params': int(n_params) if test == 'time' else None
+    }
+    
+    return metadata
+
+
+def get_baseline(filename, network, depth=None, width=None, n_feature=None):
+    """
+    Get the baseline test accuracy for the given network with 
+    the given parameters.
+    """
+
+    if network == 'fc':
+        with open(filename, 'r') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if row[0] == depth and row[1] == width:
+                    return row[3]
+        return None
+    
+    if network == 'lenet' or network == 'resnet20':
+        with open(filename, 'r') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if row[0] == n_feature:
+                    return row[2]
+        return None
+    
+    
+def get_intrinsic_dim(filename, network, baseline_90, depth=None, width=None, n_feature=None):
+    """
+    Get the intrinsic dimension (the subspace dimension that produces a 
+    test accouracy equal to 90% of the baseline) for the given network
+    with the given parameters.
+    """
+    
+
+        
 
 def proj_time(filename):
     """
@@ -39,9 +112,9 @@ def proj_time(filename):
 
     # Extract data from each column
     subspace_dim = data['subspace_dim']
-    time_dense= data['dense (ms)']
-    time_sparse = data['sparse (ms)']
-    time_fastfood = data['fastfood (ms)']
+    time_dense= data['dense (s)']
+    time_sparse = data['sparse (s)']
+    time_fastfood = data['fastfood (s)']
 
     # Close all previously opened plots
     plt.close('all')
@@ -69,6 +142,7 @@ def proj_time(filename):
 
     # Save the plot as a PNG file
     plt.savefig(f'test.png')
+
 
 def subspace_dim_vs_accuracy(filename, baseline):
     """
@@ -98,29 +172,37 @@ def subspace_dim_vs_accuracy(filename, baseline):
     # Save the plot as a PNG file
     plt.savefig(f'test2.png', bbox_inches='tight')
 
+
+def intrinsic_dim_vs_num_of_params(subspace_file, baseline_file):
+    """
+    Plot the intrinsic dimension (computed as 90% of the baseline) vs the number
+    of parameters of the network.
+    """
+
+    # Extract metadata from the filename
+    subspace_metadata = get_metadata_from(subspace_file)
+    subspace_baseline = get_metadata_from(baseline_file)
+
+    network = subspace_metadata['network_type']
+    depth = subspace_metadata['depth']
+    width = subspace_metadata['width']
+    n_feature = subspace_metadata['n_feature']
+
+    # Get the baseline
+    baseline = get_baseline(baseline_file, network, depth=depth, width=width, n_feature=n_feature)
+    baseline_90 = 0.9 * float(baseline)
+
+    # Get the relative intrinsic dimension
+
+
+    exit(0)
+
+
 def main():
-    # # Iterate over all the CSV files in the results directory
-    # for filename in os.listdir('results'):
-    #     # Skip the baseline CSV files
-    #     if filename.startswith('baseline'):
-    #         continue
+    # proj_time("results/proj_time/time_mnist_fc_100k.csv")
+    # subspace_dim_vs_accuracy("results/subspace/subspace_mnist_fc_depth_1_width_400_epochs_10_lr_0.003.csv", 0.9)
+    intrinsic_dim_vs_num_of_params("results/subspace/subspace_mnist_fc_depth_1_width_400_epochs_10_lr_0.003.csv", "results/baseline/baseline_mnist_fc_epochs_10_lr_0.003.csv")
 
-    #     # Get the baseline test accuracy for the current experiment
-    #     if filename.startswith('fc'):
-    #         depth, width = filename.split('_')[1:3]
-    #         baseline = get_baseline_fc('results/baseline_fc.csv', depth, width)
-    #     elif filename.startswith('cnn'):
-    #         n_feature = filename.split('_')[1]
-    #         baseline = get_baseline_cnn('results/baseline_cnn.csv', n_feature)
-    #     else:
-    #         raise ValueError(f'Invalid filename: {filename}')
 
-    #     # Plot the test accuracy for each subspace dimension wrt the baseline
-    #     subspace_dim_vs_accuracy(filename, baseline)
-
-    #     # Plot the execution time for each projection method
-    #     proj_time(filename)
-    proj_time("results/proj_time/time_mnist_fc_100k.csv")
-    subspace_dim_vs_accuracy("results/subspace/subspace_mnist_fc_depth_1_width_400_epochs_10_lr_0.003.csv", 0.9)
 if __name__ == '__main__':
     main()
