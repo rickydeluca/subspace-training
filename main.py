@@ -156,21 +156,21 @@ def setup_trainer(hyperparams):
     timing_callback = ForwardBackwardTimingCallback()
     
     # Time average forward + bacward pass if requested
+    # computed over 3 batches
     if hyperparams['test'] == 'time':
         # Setup trainer
         trainer = Trainer(
             accelerator = "auto",
             devices = 1 if torch.cuda.is_available() else None,
-            max_epochs = hyperparams["epochs"],
+            max_epochs = 1,
+            limit_train_batches=3,
             callbacks = [TQDMProgressBar(refresh_rate=20), timing_callback],
             logger = custom_logger,
             deterministic = hyperparams["deterministic"],  # Reproducibility
             # Reduce number of steps if we are timing the forward/backward pass
-            max_steps=1 if hyperparams['test'] == 'time' else None,
-            max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
+            # max_steps=1 if hyperparams['test'] == 'time' else None,
+            # max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
         )
-        
-        trainer.callbacks.append(timing_callback)
     
     else:
         trainer = Trainer(
@@ -191,18 +191,20 @@ if __name__ == "__main__":
     args = parse_args()
     hyperparams = read_input(args)
 
-    # Setup model (with time limit)
-    model = None
-    time_limit_minutes = 1
-    start_time = time.time()
-    while model is None and (time.time() - start_time) < time_limit_minutes*60:
-        try:
-            data_module, model = setup_model(hyperparams)
-        except:
-            raise Exception("Error in model initialization")
-    if model is None:
-        raise Exception("Could not initialize model in time limit")
+    # # Setup model (with time limit)
+    # model = None
+    # time_limit_minutes = 1
+    # start_time = time.time()
+    # while model is None and (time.time() - start_time) < time_limit_minutes*60:
+    #     try:
+    #         data_module, model = setup_model(hyperparams)
+    #     except:
+    #         raise Exception("Error in model initialization")
+    # if model is None:
+    #     raise Exception("Could not initialize model in time limit")
 
+    # Setup model
+    data_module, model = setup_model(hyperparams)
     
     # Setup trainer
     trainer, timing_callback = setup_trainer(hyperparams)

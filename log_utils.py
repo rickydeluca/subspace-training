@@ -143,12 +143,12 @@ class ForwardBackwardTimingCallback(Callback):
         self.avg_backward_time = 0.0
 
     def on_train_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int):
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
 
     def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int
     ):
-        end_time = time.time()
-        batch_time = end_time - self.start_time
+        end_time = time.perf_counter()
+        batch_time = (end_time - self.start_time) * 1000    # Convert to milliseconds
 
         if trainer.training:
             if pl_module.training:
@@ -162,8 +162,8 @@ class ForwardBackwardTimingCallback(Callback):
         self.avg_forward_time = self.forward_time / self.num_forward_passes if self.num_forward_passes > 0 else 0.0
         self.avg_backward_time = self.backward_time / self.num_backward_passes if self.num_backward_passes > 0 else 0.0
 
-        print(f"Average duration of one forward pass: {self.avg_forward_time:.4f} seconds")
-        print(f"Average duration of one backward pass: {self.avg_backward_time:.4f} seconds")
+        print(f"Average duration of one forward pass: {self.avg_forward_time:.4f} milliseconds")
+        print(f"Average duration of one backward pass: {self.avg_backward_time:.4f} milliseconds")
 
         self.forward_time = 0.0
         self.backward_time = 0.0
