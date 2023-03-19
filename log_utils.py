@@ -120,6 +120,61 @@ def save_results(model, test_metrics, timing_callback, hyperparams):
                 writer.writerow(row)
     
         return
+  
+    # ================================
+    #     SMALL NETS ACCURACY
+    # ================================
+    """
+    This is very similar to the baseline test, but it is used to test the accuracy of natural
+    small networks and it is used to differentiate the results for clarity.
+    """
+    if hyperparams['test'] == 'small-nets':
+        # Define the outfile path name wrt the hyperparams
+        outfile += f"/small-nets/small-nets_{hyperparams['dataset']}"
+        
+        if hyperparams['shuffle_pixels']:
+            outfile += f"_shuffled_pixels"
+        
+        if hyperparams['shuffle_labels']:
+            outfile += f"_shuffled_labels"
+
+        outfile += f"_{hyperparams['network_type']}_epochs_{hyperparams['epochs']}_lr_{hyperparams['lr']}.csv"
+
+        # Check if the outfile exist and it is empty
+        if os.path.isfile(outfile) and os.path.getsize(outfile) > 0:
+            # Append data
+            with open(outfile, mode='a', newline='') as of:
+                writer = csv.writer(of)
+
+                if hyperparams['network_type'] == 'fc':
+                    row = [hyperparams['hidden_depth'], hyperparams['hidden_width'], total_params, test_metrics['test_acc']]
+                else:
+                    row = [hyperparams['n_feature'], total_params, test_metrics['test_acc']]
+
+                writer.writerow(row)
+
+        else:
+            # Create file
+            if hyperparams['network_type'] == 'fc': 
+                header = ["depth", "width", "total_params", "baseline"]
+            else:
+                header = ["n_feature", "total_params", "baseline"]
+            
+            with open(outfile, mode='w', newline='') as of:
+                writer = csv.writer(of)
+
+                # Write the header
+                writer.writerow(header)
+
+                # Write data
+                if hyperparams['network_type'] == 'fc':
+                    row = [hyperparams['hidden_depth'], hyperparams['hidden_width'], total_params, test_metrics['test_acc']]
+                else:
+                    row = [hyperparams['n_feature'], total_params, test_metrics['test_acc']]
+
+                writer.writerow(row)
+    
+        return
 
     # =======================================
     #   AVERAGE FORWARD + BACKWARD DURATION
@@ -130,6 +185,7 @@ def save_results(model, test_metrics, timing_callback, hyperparams):
         
         # Return without write on CSV because it will be handled by the shell script
         return avg_total_time
+        
 
 
 class ForwardBackwardTimingCallback(Callback):

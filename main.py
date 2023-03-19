@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument('--res_dir', type=str, default="results/",
                 help='Path to the directory in which store the test metrics. (default: "results/")')
     parser.add_argument('--test', type=str, default=None,
-                    help='Which type of data we are collecting: "subspace" for subspace dim vs test accuracy; "baseline" for num of params VS baseline value; "time" for forward+backword pass time. (default: None)')
+                help='Which type of data we are collecting: "subspace" for subspace dim vs test accuracy; "baseline" for num of params VS baseline value; "small-nets" to compute and store the accuracy for natural small networks; "time" for forward+backword pass time (default: None)')
    
     
     return parser.parse_args()
@@ -167,9 +167,6 @@ def setup_trainer(hyperparams):
             callbacks = [TQDMProgressBar(refresh_rate=20), timing_callback],
             logger = custom_logger,
             deterministic = hyperparams["deterministic"],  # Reproducibility
-            # Reduce number of steps if we are timing the forward/backward pass
-            # max_steps=1 if hyperparams['test'] == 'time' else None,
-            # max_time=timedelta(minutes=1) if hyperparams['test'] == 'time' else None, 
         )
     
     else:
@@ -190,18 +187,6 @@ if __name__ == "__main__":
     # Read input
     args = parse_args()
     hyperparams = read_input(args)
-
-    # # Setup model (with time limit)
-    # model = None
-    # time_limit_minutes = 1
-    # start_time = time.time()
-    # while model is None and (time.time() - start_time) < time_limit_minutes*60:
-    #     try:
-    #         data_module, model = setup_model(hyperparams)
-    #     except:
-    #         raise Exception("Error in model initialization")
-    # if model is None:
-    #     raise Exception("Could not initialize model in time limit")
 
     # Setup model
     data_module, model = setup_model(hyperparams)

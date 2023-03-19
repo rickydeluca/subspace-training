@@ -1,4 +1,6 @@
 import csv
+import re
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -38,7 +40,7 @@ def get_metadata_from(filename):
             epochs = filename[6]
             lr = filename[8]
 
-    elif test == 'baselines':
+    elif test == 'baseline' or test == 'small-nets':
         dataset = filename[1]
         network_type = filename[2]
         epochs = filename[4]
@@ -59,9 +61,9 @@ def get_metadata_from(filename):
         'depth': int(depth) if network_type == 'fc' and test == 'subspace' else None,
         'width': int(width) if network_type == 'fc' and test == 'subspace' else None,
         'n_feature': int(n_feature) if network_type != 'fc' and test == 'subspace' else None,
-        'epochs': int(epochs),
-        'lr': float(lr),
-        'n_params': int(n_params) if test == 'time' else None
+        'epochs': int(epochs) if test == 'subspace' or test == 'baselines' or test == 'small-nets' else None,
+        'lr': float(lr) if test == 'subspace' or test == 'baselines' or test == 'small-nets' else None,
+        'n_params': n_params if test == 'time' else None
     }
     
     return metadata
@@ -74,21 +76,20 @@ def get_baseline(filename, network, depth=None, width=None, n_feature=None):
     """
 
     if network == 'fc':
-        with open(filename, 'r') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if row[0] == depth and row[1] == width:
-                    return row[3]
-        return None
+        # Read the CSV file as a pandas dataframe
+        data = pd.read_csv(filename, header=0, names=["depth", "width", "total_params", "baseline"])
+
+        # Return the baseline value associated with the given depth and width
+        return data[(data['depth'] == depth) & (data['width'] == width)]['baseline'].values[0]
+
     
     if network == 'lenet' or network == 'resnet20':
-        with open(filename, 'r') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if row[0] == n_feature:
-                    return row[2]
-        return None
-    
+        # Read the CSV file as a pandas dataframe
+        data = pd.read_csv(filename, header=0, names=["n_feature", "total_params", "baseline"])
+
+        # Return the baseline value associated with the given number of features
+        return data[data['n_feature'] == n_feature]['baseline'].values[0]
+   
     
 def get_intrinsic_dim(filename, network, baseline_90, depth=None, width=None, n_feature=None):
     """
@@ -96,25 +97,20 @@ def get_intrinsic_dim(filename, network, baseline_90, depth=None, width=None, n_
     test accouracy equal to 90% of the baseline) for the given network
     with the given parameters.
     """
-    
 
-        
-
-def proj_time(filename):
+def proj_time(filename, metadata):
     """
     Plot the execution time for each projection method.
     """
     # Read CSV file into a pandas dataframe
     data = pd.read_csv(filename)
 
-    # Remove any data points with "inf" values
-    # data = data.replace([float('inf'), float('-inf')], pd.NA).dropna()
-
     # Extract data from each column
     subspace_dim = data['subspace_dim']
-    time_dense= data['dense (s)']
-    time_sparse = data['sparse (s)']
-    time_fastfood = data['fastfood (s)']
+    time_dense= data['dense (ms)']
+    time_sparse = data['sparse (ms)']
+    time_fastfood = data['fastfood (ms)']
+    time_direct = data['direct (ms)']
 
     # Close all previously opened plots
     plt.close('all')
@@ -123,28 +119,27 @@ def proj_time(filename):
     plt.plot(subspace_dim, time_dense, 'o-', label='dense')
     plt.plot(subspace_dim, time_sparse, 'o-', label='sparse')
     plt.plot(subspace_dim, time_fastfood, 'o-', label='fastfood')
-
-    # Add an "x" marker at the last data point of each algorithm
-    line_color = plt.gca().get_lines()[0].get_color()
-    plt.scatter(subspace_dim.iloc[-1], time_dense.iloc[-1], marker='x', color=line_color)
-    line_color = plt.gca().get_lines()[1].get_color()
-    plt.scatter(subspace_dim.iloc[-1], time_sparse.iloc[-1], marker='x', color=line_color)
-    line_color = plt.gca().get_lines()[2].get_color()
-    plt.scatter(subspace_dim.iloc[-1], time_fastfood.iloc[-1], color=line_color)
+    plt.plot(subspace_dim, time_direct, 'o--', color='gray', alpha=0.5, label='direct')
 
     # Set plot title and axis labels
-    plt.title('time vs. intrinsic dimension')
-    plt.xlabel('intrinsic dimension')
-    plt.ylabel('time (s)')
+    plt.suptitle("Time vs. Intrinsic Dimension")
+    plt.title(f"{metadata['network_type'].upper()} | {metadata['dataset'].upper()} | {metadata['n_params'].upper()}")
+    plt.xlabel("intrinsic dimension")
+    plt.ylabel("time (ms)")
 
-    # Add legend to the plot
+    # Refine plot
+    plt.xticks(range(0, max(subspace_dim)+1, int(max(subspace_dim)/10)))
+    plt.gcf().set_size_inches(10, 5)
+    
+    # Add legend
     plt.legend()
 
     # Save the plot as a PNG file
-    plt.savefig(f'test.png')
+    outfile = f"plots/time/time_{metadata['dataset']}_{metadata['network_type']}_{metadata['n_params']}.png"
+    plt.savefig(outfile,  bbox_inches='tight')
 
 
-def subspace_dim_vs_accuracy(filename, baseline):
+def subspace_dim_vs_accuracy(filename, outfile, baseline):
     """
     Plot the test accuracy for each subspace dimension wrt the baseline.
     """
@@ -158,11 +153,17 @@ def subspace_dim_vs_accuracy(filename, baseline):
     # Close all previously opened plots
     plt.close('all')
 
-    # Create a line plot with markers
-    plt.plot(subspace_dim, test_accuracy, '-o', alpha=0.5)
+    # Plot test accuracy
+    plt.plot(subspace_dim, test_accuracy, '-o', alpha=1.0)
 
-    # Add a horizontal dotted line for the baseline test loss value
-    plt.axhline(y=baseline, linestyle='--', color='gray', alpha=0.5)
+    # Plot baseline
+    plt.axhline(y=baseline, linestyle='-', color='gray', alpha=1.0)
+    
+    # Plot 90% baseline
+    plt.axhline(y=baseline*0.9, linestyle='--', color='gray', alpha=1.0)
+
+    # Plot legend for baseline and 90% baseline
+    plt.legend(['test accuracy', 'baseline', '90% baseline'])
 
     # Set plot title and axis labels
     plt.title('test accuracy vs. subspace dimension')
@@ -170,39 +171,108 @@ def subspace_dim_vs_accuracy(filename, baseline):
     plt.ylabel('test accuracy')
 
     # Save the plot as a PNG file
-    plt.savefig(f'test2.png', bbox_inches='tight')
+    plt.savefig(outfile, bbox_inches='tight')
 
 
-def intrinsic_dim_vs_num_of_params(subspace_file, baseline_file):
+def subspace_vs_small_networks_accuracy(subspace_file, small_net_file, subspace_metadata, small_net_metadata, outfile):
     """
-    Plot the intrinsic dimension (computed as 90% of the baseline) vs the number
-    of parameters of the network.
+    Plot the test accuracy of a standard size network but trained with
+    subspace training vs. the test accuracy of naturally smaller networks.
     """
 
-    # Extract metadata from the filename
-    subspace_metadata = get_metadata_from(subspace_file)
-    subspace_baseline = get_metadata_from(baseline_file)
+    # Read the test accuracy of the subspace trained network
+    subspace_data = pd.read_csv(subspace_file, header=0, names=["subspace_dim", "test_accuracy", "test_loss"])
+    subspace_dims = subspace_data['subspace_dim']
+    subspace_accuracies = subspace_data['test_accuracy']
 
-    network = subspace_metadata['network_type']
-    depth = subspace_metadata['depth']
-    width = subspace_metadata['width']
-    n_feature = subspace_metadata['n_feature']
+    # Read the test accuracy of the naturally smaller networks
+    if small_net_metadata['network_type'] == 'fc':  # Fully connected network
+        small_net_data = pd.read_csv(small_net_file, header=0, names=["depth", "width", "total_params", "baseline"])
+        small_net_dims = small_net_data['total_params']
+        small_net_accuracies = small_net_data['baseline']
+    else: # LeNet or ResNet20
+        small_net_data = pd.read_csv(small_net_file, header=0, names=["n_feature", "total_params", "baseline"])
+        small_net_dims = small_net_data['total_params']
+        small_net_accuracies = small_net_data['baseline']
 
-    # Get the baseline
-    baseline = get_baseline(baseline_file, network, depth=depth, width=width, n_feature=n_feature)
-    baseline_90 = 0.9 * float(baseline)
+    # Close all previously opened plots
+    plt.close('all')
 
-    # Get the relative intrinsic dimension
+    # Plot test accuracy
+    plt.plot(subspace_dims, subspace_accuracies, '-o', alpha=1.0)
+    plt.plot(small_net_dims, small_net_accuracies, '-o', alpha=1.0)
+
+    # Add legend
+    plt.legend(['subspace network', 'small networks'])
+
+    # Set plot title and axis labels
+    plt.title('subspace vs. small network accuracy')
+
+    # Save the plot as a PNG file
+    plt.savefig(outfile, bbox_inches='tight')
 
 
-    exit(0)
+def main(test):
 
+    # ==============================================
+    #     projection time vs. intrisic dimension
+    # ==============================================
+    if test == "proj" or test == "all":
+        filename1 = "results/proj_time/time_mnist_fc_100k.csv"
+        filename2 = "results/proj_time/time_mnist_fc_1m.csv"
+        proj_time(filename1, get_metadata_from(filename1))
+        proj_time(filename2, get_metadata_from(filename2))
+    
+    # ==============================================
+    #     subspace dimension vs. test accuracy
+    # ==============================================
+    if test == "subspace" or test == "all":
+        for dataset in ['mnist', 'cifar10' 'mnist_shuffled_pixels', 'mnist_shuffled_labels', 'mnist_shuffled_pixels_shuffled_labels', 'cifar10_shuffled_pixels', 'cifar10_shuffled_labels', 'cifar10_shuffled_pixels_shuffled_labels']:
+            for network in ['fc', 'lenet', 'resnet20']:
+                if network == 'fc':  # Fully connected network
+                    for depth in [1,2,3,4,5]:
+                        for width in [50, 100, 200, 400]:
+                            try:
+                                filename=f"results/subspace/subspace_{dataset}_{network}_depth_{depth}_width_{width}_epochs_10_lr_0.003.csv"
+                                outfile=f"plots/subspace/subspace_{dataset}_{network}_depth_{depth}_width_{width}_epochs_10_lr_0.003.png"
+                                baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, depth=depth, width=width)
+                                subspace_dim_vs_accuracy(filename, outfile, baseline)
+                            except:
+                                print(f"Could not find file {filename} or {baseline}!")
 
-def main():
-    # proj_time("results/proj_time/time_mnist_fc_100k.csv")
-    # subspace_dim_vs_accuracy("results/subspace/subspace_mnist_fc_depth_1_width_400_epochs_10_lr_0.003.csv", 0.9)
-    intrinsic_dim_vs_num_of_params("results/subspace/subspace_mnist_fc_depth_1_width_400_epochs_10_lr_0.003.csv", "results/baseline/baseline_mnist_fc_epochs_10_lr_0.003.csv")
+                elif network == 'lenet':  # LeNet
+                    for n_feature in range(1, 21, 1):
+                        try:
+                            filename=f"results/subspace/subspace_{dataset}_{network}_nfeatures_{n_feature}_epochs_10_lr_0.003.csv"
+                            outfile=f"plots/subspace/subspace_{dataset}_{network}_nfeatures_{n_feature}_epochs_10_lr_0.003.png"
+                            baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, n_feature=n_feature)
+                            subspace_dim_vs_accuracy(filename, outfile, baseline)
+                        except:
+                            print(f"Could not find file {filename} or {baseline}!")
+
+                else:  # ResNet20
+                    try:
+                        filename=f"results/subspace/subspace_{dataset}_{network}_nfeatures_16_epochs_10_lr_0.003.csv"
+                        outfile=f"plots/subspace/subspace_{dataset}_{network}_nfeatures_16_epochs_10_lr_0.003.png"
+                        baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, n_feature=16)
+                        subspace_dim_vs_accuracy(filename, outfile, baseline)
+                    except:
+                        print(f"Could not find file {filename} or {baseline}!")
+
+    # ==============================================
+    #     subspace networks vs. small networks
+    # ============================================== 
+    if test == "small-nets" or test == "all":
+        # Comparison between the accuracy of smaller FC networs
+        # and the accuracy of a 784-200-200-10 network with different intrinsic dimensions
+  
+        subspace_file = f"results/subspace/subspace_mnist_fc_depth_2_width_200_epochs_10_lr_0.003.csv"
+        small_net_file = f"results/small-nets/small-nets_mnist_fc_epochs_10_lr_0.003.csv"
+        outfile = f"plots/small-nets/subspace_vs_small-nets_mnist_fc_depth_2_width_200_epochs_10_lr_0.003.png"
+
+        subspace_vs_small_networks_accuracy(subspace_file, small_net_file, get_metadata_from(subspace_file), get_metadata_from(small_net_file), outfile)
+
 
 
 if __name__ == '__main__':
-    main()
+    main("small-nets")

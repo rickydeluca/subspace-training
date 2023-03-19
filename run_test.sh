@@ -1,16 +1,22 @@
 #!/bin/bash
 
 # Define the input values
-tests=("subspace" "baseline" "time")
-datasets=("cifar10" "mnist")
-networks=("fc" "lenet" "resnet20")
-shuffle_pixels=(0 1)
+# tests=("subspace" "baseline" "time" "small-nets")
+tests=("subspace")
+# datasets=("mnist" "cifar10")
+datasets=("mnist")
+# networks=("fc" "lenet" "resnet20")
+networks=("fc")
+# shuffle_pixels=(0 1)
+shuffle_pixels=(0)
 shuffle_labels=(0)
 
 
 # FC properties
-depths=(1 2 3 4 5)
-widths=(50 100 200 400)
+# depths=(1 2 3 4 5)
+# widths=(50 100 200 400)
+depths=(2)
+widths=(200)
 
 # CNNs properties
 n_features=()
@@ -38,7 +44,8 @@ for test in "${tests[@]}"; do
                         if [ "$dataset" = "mnist" ]; then   # MNIST
                             
                             if [ "$network" = "fc" ]; then  # FC
-                                subspace_dims=(100 200 300 400 500 600 700 800 900 1000)
+                                # subspace_dims=(100 200 300 400 500 600 700 800 900 1000)
+                                subspace_dims=(2400 3200 4000 5000 5700 6500 7300 8200)
                             elif [ "$network" = "lenet" ]; then  # LeNet
                                 if [ "$sp" = "1" ]; then
                                     subspace_dims=(100 200 400 600 800 1000 1200 1400 1600)
@@ -60,7 +67,7 @@ for test in "${tests[@]}"; do
                                 if [ "$sp" = "1" ]; then
                                     subspace_dims=(1)
                                 else
-                                    subspace_dims=(100 500 1000 1500 2000 2500 3000 3500 4000)
+                                    subspace_dims=(100 500 1000 1500 2000 2500 3000 3500 4000 6000 8000 10000)
                                 fi
                             else  # ResNet20
                                 if [ "$sp" = "1" ]; then
@@ -132,12 +139,34 @@ for test in "${tests[@]}"; do
                         else
 
                             for nf in "${n_features[@]}"; do
-                                python main.py --dataset "$dataset" --shuffle_pixels "$sp" --shuffle_labels "$sl" --network "$network" --n_feature "$nf" --subspace_dim "$sd" --test "$test"
+                                python main.py --dataset "$dataset" --shuffle_pixels "$sp" --shuffle_labels "$sl" --network "$network" --n_feature "$nf" --test "$test"
                             done    
 
                         fi
 
                     done
+                done
+            done
+        done
+
+    # ===================
+    #   SMALL NETS TEST
+    # ===================
+    elif [ "$test" = "small-nets" ]; then
+        for dataset in "${datasets[@]}"; do
+            for sp in "${shuffle_pixels[@]}"; do
+                for sl in "${shuffle_labels[@]}"; do
+
+                    # FC
+                    depths=(2)
+                    widths=(6 7 8 9 10 )
+                        
+                    for depth in "${depths[@]}"; do
+                        for width in "${widths[@]}"; do
+                            python main.py --dataset "$dataset" --shuffle_pixels "$sp" --shuffle_labels "$sl" --network fc --hidden_depth "$depth" --hidden_width "$width" --test "$test"
+                        done
+                    done
+
                 done
             done
         done
