@@ -1,9 +1,25 @@
-import csv
-import re
-
+import argparse
+import sys 
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
+def parse_args():
+    '''
+    Parse the terminal arguments.
+    '''
+    parser = argparse.ArgumentParser(description='Choose the plot.')
+    parser.add_argument('--test', type=str, default=None,
+                        help='Type of plot: "subspace" for subspace dim vs test accuracy; "small-nets" for subspace networks vs small networks accuracy; "time" for forward+backword pass time vs subspace dimension; "all" for all. (default: all)')
+   
+    
+    return parser.parse_args()
+
+def read_input(args):
+    """
+    Read the argparse arguments
+    """
+    return args.test
 
 def get_metadata_from(filename):
     """
@@ -139,7 +155,7 @@ def proj_time(filename, metadata):
     plt.savefig(outfile,  bbox_inches='tight')
 
 
-def subspace_dim_vs_accuracy(filename, outfile, baseline):
+def subspace_dim_vs_accuracy(filename, outfile, baseline, dataset, network):
     """
     Plot the test accuracy for each subspace dimension wrt the baseline.
     """
@@ -166,7 +182,9 @@ def subspace_dim_vs_accuracy(filename, outfile, baseline):
     plt.legend(['test accuracy', 'baseline', '90% baseline'])
 
     # Set plot title and axis labels
-    plt.title('test accuracy vs. subspace dimension')
+    # plt.title('test accuracy vs. subspace dimension')
+    plt.suptitle("Test accuracy vs. Subspace dimension")
+    plt.title(f"{dataset.upper()} | {network.upper()}")
     plt.xlabel('subspace dimension')
     plt.ylabel('test accuracy')
 
@@ -206,7 +224,10 @@ def subspace_vs_small_networks_accuracy(subspace_file, small_net_file, subspace_
     plt.legend(['subspace network', 'small networks'])
 
     # Set plot title and axis labels
-    plt.title('subspace vs. small network accuracy')
+    plt.suptitle('Subspace vs. Small networks accuracy')
+    plt.title(f"{subspace_metadata['dataset'].upper()} | {subspace_metadata['network_type'].upper()}")
+    plt.xlabel('num trainable parameters')
+    plt.ylabel('test accuracy')
 
     # Save the plot as a PNG file
     plt.savefig(outfile, bbox_inches='tight')
@@ -227,7 +248,8 @@ def main(test):
     #     subspace dimension vs. test accuracy
     # ==============================================
     if test == "subspace" or test == "all":
-        for dataset in ['mnist', 'cifar10' 'mnist_shuffled_pixels', 'mnist_shuffled_labels', 'mnist_shuffled_pixels_shuffled_labels', 'cifar10_shuffled_pixels', 'cifar10_shuffled_labels', 'cifar10_shuffled_pixels_shuffled_labels']:
+        # for dataset in ['mnist', 'cifar10' 'mnist_shuffled_pixels', 'mnist_shuffled_labels', 'mnist_shuffled_pixels_shuffled_labels', 'cifar10_shuffled_pixels', 'cifar10_shuffled_labels', 'cifar10_shuffled_pixels_shuffled_labels']:
+        for dataset in ['mnist_shuffled_pixels']:
             for network in ['fc', 'lenet', 'resnet20']:
                 if network == 'fc':  # Fully connected network
                     for depth in [1,2,3,4,5]:
@@ -236,9 +258,10 @@ def main(test):
                                 filename=f"results/subspace/subspace_{dataset}_{network}_depth_{depth}_width_{width}_epochs_10_lr_0.003.csv"
                                 outfile=f"plots/subspace/subspace_{dataset}_{network}_depth_{depth}_width_{width}_epochs_10_lr_0.003.png"
                                 baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, depth=depth, width=width)
-                                subspace_dim_vs_accuracy(filename, outfile, baseline)
+                                subspace_dim_vs_accuracy(filename, outfile, baseline, dataset, network)
                             except:
-                                print(f"Could not find file {filename} or {baseline}!")
+                                # print(f"Could not find file {filename} or {baseline}!")
+                                continue
 
                 elif network == 'lenet':  # LeNet
                     for n_feature in range(1, 21, 1):
@@ -246,18 +269,20 @@ def main(test):
                             filename=f"results/subspace/subspace_{dataset}_{network}_nfeatures_{n_feature}_epochs_10_lr_0.003.csv"
                             outfile=f"plots/subspace/subspace_{dataset}_{network}_nfeatures_{n_feature}_epochs_10_lr_0.003.png"
                             baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, n_feature=n_feature)
-                            subspace_dim_vs_accuracy(filename, outfile, baseline)
+                            subspace_dim_vs_accuracy(filename, outfile, baseline, dataset, network)
                         except:
-                            print(f"Could not find file {filename} or {baseline}!")
+                            # print(f"Could not find file {get_metadata_from(filename)}!")
+                            continue
 
                 else:  # ResNet20
                     try:
                         filename=f"results/subspace/subspace_{dataset}_{network}_nfeatures_16_epochs_10_lr_0.003.csv"
                         outfile=f"plots/subspace/subspace_{dataset}_{network}_nfeatures_16_epochs_10_lr_0.003.png"
                         baseline=get_baseline(f"results/baseline/baseline_{dataset}_{network}_epochs_10_lr_0.003.csv", network, n_feature=16)
-                        subspace_dim_vs_accuracy(filename, outfile, baseline)
+                        subspace_dim_vs_accuracy(filename, outfile, baseline, dataset, network)
                     except:
-                        print(f"Could not find file {filename} or {baseline}!")
+                        # print(f"Could not find file {filename} or {baseline}!")
+                        continue
 
     # ==============================================
     #     subspace networks vs. small networks
@@ -275,4 +300,10 @@ def main(test):
 
 
 if __name__ == '__main__':
-    main("small-nets")
+
+    # Read input
+    args = parse_args()
+    test = read_input(args)
+    
+    # Plot
+    main(test)

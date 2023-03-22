@@ -1,6 +1,4 @@
 import argparse
-import time
-from datetime import timedelta
 
 import torch
 from pytorch_lightning import Trainer, seed_everything
