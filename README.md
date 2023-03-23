@@ -62,12 +62,12 @@ All other parameters will have the default value.
 
 To use it you need to give it the execution permissions with:
 ```
-chmod +x run_tests.sh
+chmod +x run_test.sh
 ```
 
 and then run it with:
 ```
-./run_tests.sh
+./run_test.sh
 ```
 
 ## Make plots
