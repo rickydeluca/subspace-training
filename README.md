@@ -1,11 +1,11 @@
 # Subspace Training
-PyTorch implementation of the method described by Li et al. (2018) (https://openreview.net/forum?id=ryup8-WCW) to train a neural network using only a random subspace of the original parameter space.
+This is a PyTorch implementation of the method described by Li et al. (2018) (https://openreview.net/forum?id=ryup8-WCW) for training a neural network using only a random subspace of the original parameter space.
 
-In this repository were implemented three neural networks (Fully-Connected, LeNet and ResNet20) trainable with the afromentioned technique and they were tested on two datasets (MNIST and CIFAR-10, with the option of shuffle pixels and labels).
+This repository contains three neural networks (Fully-Connected, LeNet, and ResNet20) that can be trained using the aforementioned technique. These networks have been tested on two datasets (MNIST and CIFAR-10) with the option to shuffle pixels and labels.
 
-You can also find the script to handle the data modules and the scripts to collect results and make plots from them.
+Additionally, you can find a script for handling the data modules as well as scripts for collecting results and creating plots.
 
-This is a project for the course of Deep Learning and Applied Artficial Intelligence (2021-22) held by professor Rodola in Sapienza, University of Rome.
+This is a project for the course of Deep Learning and Applied Artificial Intelligence (2021-22) held by Professor Rodola at Sapienza University of Rome.
 
 ## Prerequisites
 Please see ```requirements.txt``` to see the list of needed packages.
@@ -77,10 +77,10 @@ __NB:__ This script was made to make the plots for the report and it is not very
 
 The script generate different plots for different type of data.
 To run it use:
-```python3 make_plot.py --plot plot_name```
+```python3 make_plot.py --test test_name```
 
 Where, the test name defines the type of plot you want to generate. It can be:
-| plot_name 	| plot 	|
+| test_name 	| plot 	|
 |---	|---	|
 | subspace  | Using the files in ```results/subspace``` and in ```results/baseline``` plots the test accuracy wrt the subspace dimension for all the network tested on different datasets showing the relative baseline (and 90% baseline) for that dataset with that network |
 | small-nets | Test accuracy of standars NN but trained with subspace training vs the test accuracy of naturally smaller networks |
