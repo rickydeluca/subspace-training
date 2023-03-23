@@ -106,13 +106,6 @@ def get_baseline(filename, network, depth=None, width=None, n_feature=None):
         # Return the baseline value associated with the given number of features
         return data[data['n_feature'] == n_feature]['baseline'].values[0]
    
-    
-def get_intrinsic_dim(filename, network, baseline_90, depth=None, width=None, n_feature=None):
-    """
-    Get the intrinsic dimension (the subspace dimension that produces a 
-    test accouracy equal to 90% of the baseline) for the given network
-    with the given parameters.
-    """
 
 def proj_time(filename, metadata):
     """
@@ -296,7 +289,6 @@ def main(test):
         outfile = f"plots/small-nets/subspace_vs_small-nets_mnist_fc_depth_2_width_200_epochs_10_lr_0.003.png"
 
         subspace_vs_small_networks_accuracy(subspace_file, small_net_file, get_metadata_from(subspace_file), get_metadata_from(small_net_file), outfile)
-
 
 
 if __name__ == '__main__':
