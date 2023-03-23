@@ -4,7 +4,7 @@ PyTorch implementation of a NN able to reduce its hypothesis space by projecting
 ## Prerequisites
 Please see ```requirements.txt``` to see the list of needed packages.
 
-If you are using a __conda__ you can create the environment with all the required packages to run the experiments with:
+If you are using __conda__ you can create the environment with all the required packages to run the experiments with:
 ```
 conda env create -f environment.yaml
 ```
@@ -17,7 +17,7 @@ pip install -r requirements.txt
 ## How to run
 Activate the _virtual environment_ if you are using one.
 
-You __do not__ need to manually download the dataset beacuse the script will automatically check if they are already present in your data folder and if not, it will download them.
+You __DO NOT__ need to manually download the datasets beacuse the script will automatically check if they are already present in your data folder and if not, it will download them.
 
 To run one experiment you can use:
 
@@ -76,6 +76,6 @@ To run it use:
 Where, the test name defines the type of plot you want to generate. It can be:
 | plot_name 	| plot 	|
 |---	|---	|
-| subspace  | Using the files in ```results/subspace``` and in ```results/baseling`` plots the test accuracy wrt the subspace dimension for all the network tested on different datasets showing the relative baseline (and 90% baseline) for that dataset with that network |
+| subspace  | Using the files in ```results/subspace``` and in ```results/baseline``` plots the test accuracy wrt the subspace dimension for all the network tested on different datasets showing the relative baseline (and 90% baseline) for that dataset with that network |
 | small-nets | Test accuracy of standars NN but trained with subspace training vs the test accuracy of naturally smaller networks |
 | time  | Plots the average time of one backward + one forward pass of the different projection methods using 2 types of fully connected networks (100k and 1 million parameters) |
