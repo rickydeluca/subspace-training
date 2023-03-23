@@ -1,5 +1,11 @@
 # Subspace Training
-PyTorch implementation of a NN able to reduce its hypothesis space by projecting the training parameters in a lower dimensional space, as described by Li et al. (2018) (https://openreview.net/forum?id=ryup8-WCW). This is a project for the course of Deep Learning and Applied Artficial Intelligence (2021-22), Sapienza University of Rome.
+PyTorch implementation of the method described by Li et al. (2018) (https://openreview.net/forum?id=ryup8-WCW) to train a neural network using only a random subspace of the original parameter space.
+
+In this repository were implemented three neural networks (Fully-Connected, LeNet and ResNet20) trainable with the afromentioned technique and they were tested on two datasets (MNIST and CIFAR-10, with the option of shuffle pixels and labels).
+
+You can also find the script to handle the data modules and the scripts to collect results and make plots from them.
+
+This is a project for the course of Deep Learning and Applied Artficial Intelligence (2021-22) held by professor Rodola in Sapienza, University of Rome.
 
 ## Prerequisites
 Please see ```requirements.txt``` to see the list of needed packages.
