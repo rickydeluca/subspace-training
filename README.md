@@ -19,6 +19,7 @@ Or, if you prefer to use __pip__:
 ```
 pip install -r requirements.txt
 ```
+But in this case, make sure you have all dependencies installed.
 
 ## How to run
 Activate the _virtual environment_ if you are using one.
